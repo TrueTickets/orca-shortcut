@@ -73,7 +73,7 @@ const DONE = 'done'
 const BACKLOG = 'backlog'
 
 /** What is off about a story and its worktrees, as the list shows it. */
-export function storyFlags(item: Omit<StoryItem, 'flags'>): WorktreeFlag[] {
+export function storyFlags(item: Omit<StoryItem, 'flags' | 'nextStates'>): WorktreeFlag[] {
   const flags: WorktreeFlag[] = []
   const isSubtask = item.parentId !== null
   if (isSubtask && item.stateType === IN_PROGRESS && item.worktrees.length === 0) {

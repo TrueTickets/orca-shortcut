@@ -4,8 +4,9 @@
 import type { OrcaWorkerApi } from 'orca/worker'
 import { shortcutBranchName } from './branch-name'
 import { GitError, moveToBranch, type GitRunner } from './git-branch'
-import type { CreatedSubtask, ProjectOption, StartResult, WorkOptions } from './protocol'
+import type { CreatedSubtask, MovedStory, ProjectOption, StartResult, WorkOptions } from './protocol'
 import { codedError, type ShortcutClient, type ShortcutStory } from './shortcut-api'
+import { forwardStates } from './state-moves'
 import { buildAgentPrompt, planShortcutUpdates, stateNamed, suggestProject } from './start-work'
 import { indexWorktrees } from './worktree-links'
 
@@ -269,4 +270,36 @@ export async function createSubtask(
     warnings.push(`Shortcut created sc-${created.id} but did not make it a sub-task of sc-${parent.id}.`)
   }
   return { id: created.id, name: created.name, state: state.name, warnings }
+}
+
+/**
+ * Moves a story or sub-task forward to `stateId`. Checked against Shortcut as it is now, not as
+ * the panel last saw it, so a stale panel can never move anything back.
+ */
+export async function moveStory(
+  ctx: WorkContext,
+  input: { storyId: number; stateId: number }
+): Promise<MovedStory> {
+  const [story, states] = await Promise.all([
+    ctx.client.getStory(input.storyId),
+    ctx.client.listWorkflowStates()
+  ])
+  const target = states.find((state) => state.id === input.stateId)
+  if (!target) {
+    throw codedError('invalid_params', `No workflow state has id ${input.stateId}.`)
+  }
+  if (story.workflowStateId === target.id) {
+    return { id: story.id, state: target.name, stateType: target.type }
+  }
+  const allowed = forwardStates(story.workflowStateId, story.parentStoryId !== null, states)
+  if (!allowed.some((state) => state.id === target.id)) {
+    const current = states.find((state) => state.id === story.workflowStateId)?.name ?? 'its state'
+    throw codedError(
+      'invalid_params',
+      `sc-${story.id} can only move forward from ${current} here; move it to ${target.name} in Shortcut.`
+    )
+  }
+  const moved = await ctx.client.updateStory(story.id, { workflowStateId: target.id })
+  const now = states.find((state) => state.id === moved.workflowStateId) ?? target
+  return { id: moved.id, state: now.name, stateType: now.type }
 }

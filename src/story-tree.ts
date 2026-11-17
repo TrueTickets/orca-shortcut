@@ -9,6 +9,7 @@ import type {
   WorktreeRef
 } from './protocol'
 import type { ShortcutStory, ShortcutWorkflowState } from './shortcut-api'
+import { forwardStates } from './state-moves'
 import { storyFlags } from './worktree-links'
 
 /** Worktrees by the story id their branch names (see worktree-links.ts). */
@@ -75,7 +76,11 @@ export function toStoryItem(
     subTaskCount: story.subTaskIds.length,
     worktrees: [...(worktrees.get(story.id) ?? [])]
   }
-  return { ...item, flags: storyFlags(item) }
+  return {
+    ...item,
+    flags: storyFlags(item),
+    nextStates: forwardStates(story.workflowStateId, story.parentStoryId !== null, [...states.values()])
+  }
 }
 
 export function statesById(

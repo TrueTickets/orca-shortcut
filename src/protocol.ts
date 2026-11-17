@@ -31,6 +31,11 @@ declare module 'orca' {
      * workflow state, with the story's team and type.
      */
     'subtask.create': { input: { parentId: number; name: string }; output: CreatedSubtask }
+    /**
+     * Moves a story or sub-task to workflow state `stateId`, which must be one of its
+     * `nextStates`: the panel only moves things forward.
+     */
+    'story.move': { input: { storyId: number; stateId: number }; output: MovedStory }
     /** Shows a worktree in Orca, as clicking it in the sidebar does. */
     'worktrees.open': { input: { workspaceId: string }; output: null }
   }
@@ -58,6 +63,9 @@ export type StoryOwner = 'me' | 'anyone' | 'unassigned'
 export type StoryFilter = { states: string[]; owner: StoryOwner }
 
 export type WorkflowStateOption = { name: string; type: string }
+
+/** A workflow state a story can be moved to. */
+export type StateOption = { id: number; name: string; type: string }
 
 export type AgentState = 'working' | 'permission' | 'done' | 'active' | 'inactive'
 
@@ -98,6 +106,8 @@ export type StoryItem = {
   /** Worktrees whose branch names this story. */
   worktrees: WorktreeRef[]
   flags: WorktreeFlag[]
+  /** The states it can move to from the panel: later ones in its workflow, for its kind. */
+  nextStates: StateOption[]
 }
 
 export type LinkedWorktree = WorktreeRef & {
@@ -160,4 +170,11 @@ export type CreatedSubtask = {
   state: string
   /** What did not go as asked; the sub-task exists either way. */
   warnings: string[]
+}
+
+export type MovedStory = {
+  id: number
+  /** The workflow state it is in now, and that state's type. */
+  state: string
+  stateType: string
 }

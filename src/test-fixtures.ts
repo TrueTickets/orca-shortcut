@@ -20,6 +20,7 @@ export function storyItem(id: number, fields: Partial<StoryItem> = {}): StoryIte
     subTaskCount: 0,
     worktrees: [],
     flags: [],
+    nextStates: [],
     ...fields
   }
 }

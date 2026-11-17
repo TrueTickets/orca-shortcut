@@ -109,7 +109,12 @@ test('a story without a parent is its own group', () => {
         parentId: null,
         subTaskCount: 0,
         worktrees: [],
-        flags: []
+        flags: [],
+        // Forward, and a story's: the sub-task state is left out.
+        nextStates: [
+          { id: 3, name: 'In Progress (Stories)', type: 'started' },
+          { id: 5, name: 'Complete', type: 'done' }
+        ]
       },
       matched: true,
       subtasks: []

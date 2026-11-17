@@ -35,7 +35,7 @@ import {
   shortBranch,
   storyIdOfBranch
 } from './worktree-links'
-import { createSubtask, startWork, workOptions, type WorkContext } from './work-actions'
+import { createSubtask, moveStory, startWork, workOptions, type WorkContext } from './work-actions'
 
 /** Secret key for the Shortcut API token. */
 const TOKEN = 'shortcutToken'
@@ -274,6 +274,8 @@ export default function activate(orca: OrcaWorkerApi): void {
   orca.panels.handle('subtask.create', async (input) =>
     createSubtask(orca, await workContext(), input)
   )
+
+  orca.panels.handle('story.move', async (input) => moveStory(await workContext(), input))
 
   orca.panels.handle('worktrees.open', async ({ workspaceId }) => {
     await orca.host.call('workspace.open', { workspaceId })

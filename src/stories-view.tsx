@@ -76,9 +76,10 @@ function iconOf(item: StoryItem): IconName {
     return 'bot'
   }
   if (item.worktrees.length > 0) {
-    return 'folder'
+    return 'branch'
   }
-  return item.parentId === null ? 'book' : 'branch'
+  // No worktree yet: a sub-task is waiting for Start work, as its button's icon says.
+  return item.parentId === null ? 'book' : 'play'
 }
 
 /** The second line: the id, then where its worktree stands. */

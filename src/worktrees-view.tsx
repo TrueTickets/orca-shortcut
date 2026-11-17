@@ -34,7 +34,7 @@ function iconOf(worktree: LinkedWorktree): IconName {
   if (worktree.flags.length > 0) {
     return 'flag'
   }
-  return worktree.agent === 'working' || worktree.agent === 'permission' ? 'bot' : 'folder'
+  return worktree.agent === 'working' || worktree.agent === 'permission' ? 'bot' : 'branch'
 }
 
 /** Like a worktree in Orca's left sidebar: the story on top, the branch under it, then pills. */

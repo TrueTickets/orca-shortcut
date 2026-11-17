@@ -156,7 +156,7 @@ test('lists sub-tasks under a header for their story, as Orca lists worktrees', 
     rows(view).map((row) => [row.title, row.description, row.icon]),
     [
       ['Lone story', 'sc-30', 'book'],
-      ['First sub-task', 'sc-11', 'branch']
+      ['First sub-task', 'sc-11', 'play']
     ]
   )
   assert.deepEqual(view.errors, [])
@@ -337,7 +337,7 @@ test('marks sub-tasks by their worktree: here, agent working, missing', async ()
   assert.deepEqual(
     subtasks.map((row) => [row.icon, row.description, row.pills]),
     [
-      ['folder', 'sc-11 · here', ['warning:Ready']],
+      ['branch', 'sc-11 · here', ['warning:Ready']],
       ['bot', 'sc-12 · agent working', ['warning:Ready']],
       ['warning', 'sc-13', ['warning:Ready', 'danger:no worktree']]
     ]

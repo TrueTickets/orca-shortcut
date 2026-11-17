@@ -584,3 +584,83 @@ test('the Worktrees tab tints the focused worktree too', async () => {
   assert.equal(tinted.filter((box) => /ada\/sc-11\/work/.test(words(box))).length, 1)
   await view.unmount()
 })
+
+// ---- Creating sub-tasks ----
+
+test('creates a sub-task from a story, then opens it with Start work ready', async () => {
+  const sent: { name: string; input: unknown }[] = []
+  let after = false
+  const withNew: StoryList = {
+    ...list,
+    groups: [
+      {
+        story: storyItem(30, { name: 'Lone story', subTaskCount: 1 }),
+        matched: true,
+        subtasks: [storyItem(31, { name: 'Tabulate the results', parentId: 30 })]
+      },
+      list.groups[1]
+    ]
+  }
+  const host = mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': () => (after ? withNew : list),
+      'subtask.create': (input: unknown) => {
+        sent.push({ name: 'subtask.create', input })
+        after = true
+        return { id: 31, name: 'Tabulate the results', state: 'Ready', warnings: [] }
+      },
+      'work.options': (input: unknown) => (sent.push({ name: 'work.options', input }), workOptions)
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ type: 'ListItem', text: /Lone story/ })
+  assert.equal(view.find({ type: 'Button', text: 'Create sub-task' })?.props?.disabled, true)
+  await view.type({ label: 'New sub-task' }, 'Tabulate the results')
+  await view.press({ type: 'Button', text: 'Create sub-task' })
+
+  assert.deepEqual(sent, [
+    { name: 'subtask.create', input: { parentId: 30, name: 'Tabulate the results' } },
+    { name: 'work.options', input: { storyId: 31 } }
+  ])
+  // The new sub-task is open, under its story, with its Start work form.
+  const frame = nodes(view).find((node) => node.type === 'Box' && node.props?.background === 'accent')
+  assert.match(words(frame), /Tabulate the results/)
+  assert.ok(view.find({ type: 'Button', text: 'Start work' }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('says when the filter does not show the new sub-task', async () => {
+  const host = mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': list,
+      'subtask.create': { id: 31, name: 'Hidden', state: 'New', warnings: [] }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ type: 'ListItem', text: /Lone story/ })
+  await view.type({ label: 'New sub-task' }, 'Hidden', { submit: true })
+  assert.ok(view.find({ text: 'Created sc-31 in New. The current filter does not show it.' }))
+  await view.unmount()
+})
+
+test('says why a sub-task could not be created, keeping the title', async () => {
+  const host = mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': list,
+      'subtask.create': () => {
+        throw hostError('invalid_params', 'Shortcut takes titles of at most 512 characters.')
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ type: 'ListItem', text: /Lone story/ })
+  await view.type({ label: 'New sub-task' }, 'Too long')
+  await view.press({ type: 'Button', text: 'Create sub-task' })
+  assert.ok(view.find({ text: 'Shortcut takes titles of at most 512 characters.' }))
+  assert.equal(view.valueOf({ label: 'New sub-task' }), 'Too long')
+  await view.unmount()
+})

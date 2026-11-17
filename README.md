@@ -86,6 +86,16 @@ Each step after the worktree exists reports a failure as a warning
 rather than undoing the worktree.
 Work starts only on sub-tasks unless **Work only on sub-tasks** is off.
 
+## Creating sub-tasks
+
+Work starts on sub-tasks, so a story's details offer to create one:
+type a title and press **Create sub-task**.
+It is created under the story,
+in **New sub-task state** (Ready by default),
+with you as its owner and the story's team and type,
+then opens with Start work ready.
+Sub-tasks of sub-tasks are refused.
+
 ## Token
 
 The API token is checked against Shortcut before it is saved,

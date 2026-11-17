@@ -35,6 +35,7 @@ import {
   selected
 } from './state'
 import { shortStateName, toneOfState } from './state-tone'
+import { CreateSubtask } from './create-subtask-view'
 import { prepareStartWork, StartWork } from './start-work-view'
 import { describeFilter } from './story-tree'
 import { FLAG_PILL, FLAG_TEXT, isProblem } from './worktree-links'
@@ -330,9 +331,7 @@ function StoryDetails({ story }: { story: StoryItem }) {
         {story.worktrees.length > 0 ? null : story.parentId !== null ? (
           <StartWork story={story} />
         ) : (
-          <Text size="xs" muted>
-            Work starts on a story's sub-tasks.
-          </Text>
+          <CreateSubtask story={story} />
         )}
         <Row>
           <Button

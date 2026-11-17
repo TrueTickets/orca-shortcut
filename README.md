@@ -5,9 +5,9 @@ An [Orca](https://github.com/stablyai/orca) plugin that brings
 
 > Work in progress.
 > Today it connects to Shortcut with an API token
-> and lists your stories and sub-tasks,
-> with the worktree each one is checked out in.
-> Starting worktrees from sub-tasks is next.
+> and lists your stories and sub-tasks
+> with the worktree each one is checked out in,
+> and starts work on a sub-task: worktree, branch, Shortcut states and an agent.
 
 ## How it works
 
@@ -60,6 +60,29 @@ and nothing is stored that could go stale.
   a worktree on a story instead of a sub-task,
   and a worktree whose story is done or archived.
 
+## Starting work
+
+Select a sub-task without a worktree and press **Start work…**.
+The card offers a project
+(where the story's other sub-tasks have worktrees, else the last one used),
+an agent, and the branch it will use. **Start work** then:
+
+1. creates an Orca worktree named after the sub-task
+   (the project's setup script runs as its settings say);
+2. puts it on the branch Shortcut's branch helper names,
+   `ada/sc-1841/lay-out-the-operation-cards`,
+   or on that branch when earlier work left it;
+3. moves the sub-task to **Started sub-task state**
+   and its story to **Started story state** if the story has not started,
+   never moving either back, and adds you as an owner;
+4. starts the agent with the sub-task and its story as its prompt,
+   their descriptions marked as data, not instructions.
+
+A sub-task that already has a worktree opens it instead.
+Each step after the worktree exists reports a failure as a warning
+rather than undoing the worktree.
+Work starts only on sub-tasks unless **Work only on sub-tasks** is off.
+
 ## Token
 
 The API token is checked against Shortcut before it is saved,
@@ -72,7 +95,7 @@ which it needs to reach the Shortcut API.
 
 ## Develop
 
-Needs Orca 1.4.248 or later.
+Needs Orca 1.4.259 or later.
 
 ```sh
 orca plugin validate .

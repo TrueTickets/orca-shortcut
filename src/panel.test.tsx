@@ -400,3 +400,109 @@ test('a created or removed worktree reloads the list', async () => {
   await view.unmount()
 })
 
+
+// ---- Starting work ----
+
+const workOptions = {
+  projects: [
+    { id: 'p-engine', name: 'engine', hostId: 'local' },
+    { id: 'p-mill', name: 'mill', hostId: 'ssh:box' }
+  ],
+  suggestedProjectId: 'p-engine',
+  branch: 'ada/sc-11/first-sub-task',
+  agents: ['claude', 'codex'],
+  defaultAgent: 'claude'
+}
+
+test('starts work on a sub-task: options first, then the worktree', async () => {
+  const sent: { name: string; input: unknown }[] = []
+  const host = mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': list,
+      'work.options': (input: unknown) => (sent.push({ name: 'work.options', input }), workOptions),
+      'work.start': (input: unknown) => (
+        sent.push({ name: 'work.start', input }),
+        {
+          workspaceId: 'new',
+          branch: workOptions.branch,
+          existing: false,
+          done: ['Created a worktree in engine.', 'Started codex on it.'],
+          warnings: ['Could not update sc-10: down']
+        }
+      )
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ type: 'ListItem', text: /First sub-task/ })
+  // Nothing is asked of the worker until the person presses.
+  assert.deepEqual(sent, [])
+  await view.press({ text: 'Start work…' })
+  assert.deepEqual(sent, [{ name: 'work.options', input: { storyId: 11 } }])
+
+  assert.equal(view.valueOf({ label: 'Project' }), 'p-engine')
+  assert.equal(view.valueOf({ label: 'Agent' }), 'claude')
+  assert.ok(view.find({ text: 'Branch: ada/sc-11/first-sub-task' }))
+  await view.select({ label: 'Agent' }, 'codex')
+  await view.press({ type: 'Button', text: 'Start work' })
+
+  assert.deepEqual(sent[1], {
+    name: 'work.start',
+    input: { storyId: 11, projectId: 'p-engine', agent: 'codex' }
+  })
+  assert.ok(view.summary().some((line) => line.includes('Work started')))
+  assert.ok(view.summary().some((line) => line.includes('Needs a look')))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('"No agent" starts work without one', async () => {
+  let started: unknown = null
+  const host = mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': list,
+      'work.options': workOptions,
+      'work.start': (input: unknown) => (
+        (started = input),
+        { workspaceId: 'new', branch: workOptions.branch, existing: false, done: [], warnings: [] }
+      )
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ type: 'ListItem', text: /First sub-task/ })
+  await view.press({ text: 'Start work…' })
+  await view.select({ label: 'Agent' }, 'none')
+  await view.press({ type: 'Button', text: 'Start work' })
+  assert.deepEqual(started, { storyId: 11, projectId: 'p-engine', agent: null })
+  await view.unmount()
+})
+
+test('says why work could not start, and keeps the form', async () => {
+  const host = mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': list,
+      'work.options': workOptions,
+      'work.start': () => {
+        throw hostError('action_failed', "this project's setup script needs a decision")
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ type: 'ListItem', text: /First sub-task/ })
+  await view.press({ text: 'Start work…' })
+  await view.press({ type: 'Button', text: 'Start work' })
+  assert.ok(view.find({ text: "this project's setup script needs a decision" }))
+  assert.ok(view.find({ label: 'Project' }))
+  await view.unmount()
+})
+
+test('a story offers no worktree of its own', async () => {
+  const host = mockHost({ requests: { 'auth.status': connected, 'stories.list': list } })
+  const view = await mount(panel, { host })
+  await view.press({ type: 'ListItem', text: /Lone story/ })
+  assert.equal(view.find({ text: 'Start work…' }), null)
+  assert.ok(view.find({ text: "Work starts on a story's sub-tasks." }))
+  await view.unmount()
+})

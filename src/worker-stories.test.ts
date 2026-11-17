@@ -81,7 +81,10 @@ function fakeShortcut(routes: Routes): string[] {
 }
 
 const connected = {
-  results: { 'secrets.protection': { status: 'os-keyring' } },
+  results: {
+    'secrets.protection': { status: 'os-keyring' },
+    'workspace.list': { workspaces: [], truncated: false }
+  },
   secrets: { shortcutToken: 'tok' },
   storage: { member: { name: 'Ada', mentionName: 'ada', workspaceName: 'Engines' } }
 }

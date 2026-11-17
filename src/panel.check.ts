@@ -1,47 +1,96 @@
 // `orca plugin check` renders the panel once per scenario. Connected scenarios answer the
 // panel's requests with fixed data instead of running the worker, which would call Shortcut.
 import { defineCheck } from 'orca/testing'
-import type { AuthStatus, StoryList } from './protocol'
+import type { StoryList, WorktreeList } from './protocol'
+import { connected, storyItem, WORKFLOW_STATES, worktreeRef } from './test-fixtures'
 
-const connected: AuthStatus = {
-  connected: true,
-  secretsAvailable: true,
-  member: { name: 'Ada Lovelace', mentionName: 'ada', workspaceName: 'Analytical Engines' }
-}
-
-const url = (id: number) => `https://app.shortcut.com/engines/story/${id}`
+const focusedRef = worktreeRef(211)
+const agentRef = worktreeRef(212, { agent: 'working' })
 
 const stories: StoryList = {
-  filter: { states: ['Ready'], owner: 'me' },
-  states: [
-    { name: 'New', type: 'backlog' },
-    { name: 'Ready', type: 'unstarted' },
-    { name: 'In Progress (Stories)', type: 'started' },
-    { name: 'In Development (Sub-tasks)', type: 'started' },
-    { name: 'PR Review (Sub-tasks)', type: 'started' },
-    { name: 'Complete', type: 'done' }
-  ],
+  filter: { states: ['Ready', 'In Development (Sub-tasks)'], owner: 'me' },
+  states: WORKFLOW_STATES,
   groups: [
     {
-      story: { id: 305, name: 'Publish the difference engine tables', url: url(305), state: 'Ready', parentId: null, subTaskCount: 0 },
+      story: storyItem(305, { name: 'Publish the difference engine tables' }),
       matched: true,
       subtasks: []
     },
     {
-      story: { id: 210, name: 'Program the Analytical Engine for Bernoulli numbers', url: url(210), state: 'In Progress (Stories)', parentId: null, subTaskCount: 3 },
+      story: storyItem(210, {
+        name: 'Program the Analytical Engine for Bernoulli numbers',
+        state: 'In Progress (Stories)',
+        stateType: 'started',
+        subTaskCount: 3
+      }),
       matched: false,
       subtasks: [
-        { id: 211, name: 'Lay out the operation cards', url: url(211), state: 'Ready', parentId: 210, subTaskCount: 0 },
-        { id: 212, name: 'Check variable cards against Note G', url: url(212), state: 'Ready', parentId: 210, subTaskCount: 0 }
+        storyItem(211, {
+          name: 'Lay out the operation cards',
+          parentId: 210,
+          state: 'In Development (Sub-tasks)',
+          stateType: 'started',
+          worktrees: [focusedRef]
+        }),
+        storyItem(212, {
+          name: 'Check variable cards against Note G',
+          parentId: 210,
+          state: 'In Development (Sub-tasks)',
+          stateType: 'started',
+          worktrees: [agentRef]
+        }),
+        storyItem(213, {
+          name: 'Tabulate the results',
+          parentId: 210,
+          state: 'In Development (Sub-tasks)',
+          stateType: 'started',
+          flags: ['no-worktree']
+        })
       ]
     }
   ],
   truncated: false
 }
 
+const worktrees: WorktreeList = {
+  worktrees: [
+    {
+      ...worktreeRef(150, { name: 'old-tables' }),
+      storyId: 150,
+      story: storyItem(150, { name: 'Print the old tables', state: 'Complete', stateType: 'done' }),
+      focused: false,
+      flags: ['stale']
+    },
+    {
+      ...focusedRef,
+      storyId: 211,
+      story: stories.groups[1].subtasks[0],
+      focused: true,
+      flags: []
+    },
+    {
+      ...agentRef,
+      storyId: 212,
+      story: stories.groups[1].subtasks[1],
+      focused: false,
+      flags: []
+    }
+  ]
+}
+
+const connectedRequests = {
+  'auth.status': connected,
+  'stories.list': stories,
+  'worktrees.list': worktrees,
+  'focus.get': { branch: focusedRef.branch, storyId: 211 }
+}
+
 export default defineCheck({
   disconnected: { results: { 'secrets.protection': { status: 'os-keyring' } } },
   noKeyStore: { results: { 'secrets.protection': { status: 'unavailable' } } },
-  stories: { requests: { 'auth.status': connected, 'stories.list': stories } },
-  noStories: { requests: { 'auth.status': connected, 'stories.list': { ...stories, groups: [] } } }
+  stories: { requests: connectedRequests },
+  noStories: {
+    requests: { ...connectedRequests, 'stories.list': { ...stories, groups: [] } }
+  },
+  worktrees: { requests: connectedRequests, persisted: { plugin: { tab: 'worktrees' } } }
 })

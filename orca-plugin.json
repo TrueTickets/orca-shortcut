@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "description": "Shortcut stories and sub-tasks in Orca: browse your work, start worktrees from sub-tasks and keep Shortcut in step.",
   "engines": {
-    "orca": ">=1.4.246"
+    "orca": ">=1.4.248"
   },
   "execution": "trusted-worker",
   "pluginApi": 1,
@@ -45,6 +45,24 @@
         ],
         "default": "me"
       }
+    ],
+    "events": [
+      {
+        "on": "workspace.changed"
+      },
+      {
+        "on": "workspace.created"
+      },
+      {
+        "on": "workspace.removed"
+      }
+    ],
+    "statusBarItems": [
+      {
+        "id": "focused-story",
+        "icon": "branch",
+        "tooltip": "The Shortcut story of the focused worktree"
+      }
     ]
   },
   "capabilities": [
@@ -56,6 +74,12 @@
     },
     {
       "kind": "settings:own"
+    },
+    {
+      "kind": "workspace:read"
+    },
+    {
+      "kind": "workspace:write"
     }
   ],
   "license": "MIT"

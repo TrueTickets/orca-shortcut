@@ -22,6 +22,7 @@ function story(id: number, fields: Partial<ShortcutStory> = {}): ShortcutStory {
     name: `Story ${id}`,
     appUrl: `https://app.shortcut.com/ws/story/${id}`,
     storyType: 'feature',
+    archived: false,
     workflowStateId: 2,
     parentStoryId: null,
     subTaskIds: [],
@@ -100,12 +101,44 @@ test('a story without a parent is its own group', () => {
         name: 'Story 30',
         url: 'https://app.shortcut.com/ws/story/30',
         state: 'Ready',
+        stateType: 'unstarted',
+        archived: false,
         parentId: null,
-        subTaskCount: 0
+        subTaskCount: 0,
+        worktrees: [],
+        flags: []
       },
       matched: true,
       subtasks: []
     }
+  ])
+})
+
+test('attaches the worktrees whose branch names each story, and flags what is off', () => {
+  const ref = (workspaceId: string, branch: string) => ({
+    workspaceId,
+    name: workspaceId,
+    branch,
+    path: `/w/${workspaceId}`,
+    project: 'infra',
+    agent: null
+  })
+  const worktrees = new Map([
+    [11, [ref('a', 'ada/sc-11/slug')]],
+    [10, [ref('b', 'ada/sc-10/story')]]
+  ])
+  const matches = [
+    story(11, { parentStoryId: 10, workflowStateId: 4 }),
+    story(12, { parentStoryId: 10, workflowStateId: 4 })
+  ]
+  const parents = new Map([[10, story(10, { subTaskIds: [11, 12], workflowStateId: 3 })]])
+  const [group] = buildStoryGroups(matches, parents, STATES, worktrees)
+
+  assert.deepEqual(group.story.worktrees.map((w) => w.workspaceId), ['b'])
+  assert.deepEqual(group.story.flags, ['on-story'])
+  assert.deepEqual(group.subtasks.map((s) => [s.id, s.worktrees.length, s.flags]), [
+    [11, 1, []],
+    [12, 0, ['no-worktree']]
   ])
 })
 

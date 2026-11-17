@@ -34,6 +34,7 @@ export type ShortcutStory = {
   name: string
   appUrl: string
   storyType: string
+  archived: boolean
   workflowStateId: number
   parentStoryId: number | null
   subTaskIds: number[]
@@ -72,6 +73,7 @@ type RawStory = {
   name?: unknown
   app_url?: unknown
   story_type?: unknown
+  archived?: unknown
   workflow_state_id?: unknown
   parent_story_id?: unknown
   sub_task_story_ids?: unknown
@@ -87,6 +89,7 @@ function toStory(raw: RawStory): ShortcutStory {
     name: String(raw.name ?? ''),
     appUrl: String(raw.app_url ?? ''),
     storyType: String(raw.story_type ?? ''),
+    archived: raw.archived === true,
     workflowStateId: raw.workflow_state_id,
     parentStoryId: typeof raw.parent_story_id === 'number' ? raw.parent_story_id : null,
     subTaskIds: Array.isArray(raw.sub_task_story_ids)

@@ -14,10 +14,20 @@ declare module 'orca' {
      * `defaultStates` and `defaultOwner` settings apply; the answer says which filter ran.
      */
     'stories.list': { input: { filter?: StoryFilter }; output: StoryList }
+    /** Every worktree whose branch names a story, with that story and what is off. */
+    'worktrees.list': { output: WorktreeList }
+    /** The focused worktree's branch and story, as last reported by Orca. */
+    'focus.get': { output: FocusedStory }
+    /** Shows a worktree in Orca, as clicking it in the sidebar does. */
+    'worktrees.open': { input: { workspaceId: string }; output: null }
   }
   interface PluginPanelEvents {
     /** Posted to every open panel after connecting or disconnecting. */
     'auth.changed': AuthStatus
+    /** A worktree was created or removed: lists that show worktrees are stale. */
+    'worktrees.changed': null
+    /** The focused worktree changed; `storyId` is the story its branch names, if any. */
+    'focus.changed': FocusedStory
   }
 }
 
@@ -36,15 +46,51 @@ export type StoryFilter = { states: string[]; owner: StoryOwner }
 
 export type WorkflowStateOption = { name: string; type: string }
 
+export type AgentState = 'working' | 'permission' | 'done' | 'active' | 'inactive'
+
+/** An Orca worktree whose branch names a story. */
+export type WorktreeRef = {
+  workspaceId: string
+  name: string
+  /** Without `refs/heads/`. */
+  branch: string
+  path: string
+  project: string | null
+  /** The agent status Orca shows for the worktree, when it reports one. */
+  agent: AgentState | null
+}
+
+/** What is off between a story and its worktrees. */
+export type WorktreeFlag = 'no-worktree' | 'duplicate' | 'on-story' | 'stale' | 'missing-story'
+
 export type StoryItem = {
   id: number
   name: string
   url: string
-  /** The workflow state's name. */
+  /** The workflow state's name, and its type (`backlog`, `unstarted`, `started`, `done`). */
   state: string
+  stateType: string
+  archived: boolean
   parentId: number | null
   subTaskCount: number
+  /** Worktrees whose branch names this story. */
+  worktrees: WorktreeRef[]
+  flags: WorktreeFlag[]
 }
+
+export type LinkedWorktree = WorktreeRef & {
+  storyId: number
+  /** Null when Shortcut could not return the story. */
+  story: StoryItem | null
+  /** The worktree Orca shows now. */
+  focused: boolean
+  flags: WorktreeFlag[]
+}
+
+export type WorktreeList = { worktrees: LinkedWorktree[] }
+
+/** The focused worktree's branch, and the story it names. */
+export type FocusedStory = { branch: string | null; storyId: number | null }
 
 /**
  * A parent story and its sub-tasks that matched. `matched` is false when the story is only

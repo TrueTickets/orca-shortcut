@@ -1,7 +1,18 @@
 // Pure logic between Shortcut and the panel: the filter as Shortcut search queries, and search
 // results as a parent story → sub-task tree. No I/O, so it is tested directly.
-import type { StoryFilter, StoryGroup, StoryItem, StoryOwner, WorkflowStateOption } from './protocol'
+import type {
+  StoryFilter,
+  StoryGroup,
+  StoryItem,
+  StoryOwner,
+  WorkflowStateOption,
+  WorktreeRef
+} from './protocol'
 import type { ShortcutStory, ShortcutWorkflowState } from './shortcut-api'
+import { storyFlags } from './worktree-links'
+
+/** Worktrees by the story id their branch names (see worktree-links.ts). */
+export type WorktreeIndex = ReadonlyMap<number, readonly WorktreeRef[]>
 
 export const STORY_OWNERS: readonly StoryOwner[] = ['me', 'anyone', 'unassigned']
 
@@ -46,15 +57,31 @@ export function normalizeFilter(
   return { states: cleaned, owner }
 }
 
-function item(story: ShortcutStory, stateNames: ReadonlyMap<number, string>): StoryItem {
-  return {
+/** A story as the panel shows it, with the worktrees its id names and what is off. */
+export function toStoryItem(
+  story: ShortcutStory,
+  states: ReadonlyMap<number, ShortcutWorkflowState>,
+  worktrees: WorktreeIndex
+): StoryItem {
+  const state = states.get(story.workflowStateId)
+  const item = {
     id: story.id,
     name: story.name,
     url: story.appUrl,
-    state: stateNames.get(story.workflowStateId) ?? 'Unknown state',
+    state: state?.name ?? 'Unknown state',
+    stateType: state?.type ?? '',
+    archived: story.archived,
     parentId: story.parentStoryId,
-    subTaskCount: story.subTaskIds.length
+    subTaskCount: story.subTaskIds.length,
+    worktrees: [...(worktrees.get(story.id) ?? [])]
   }
+  return { ...item, flags: storyFlags(item) }
+}
+
+export function statesById(
+  states: readonly ShortcutWorkflowState[]
+): Map<number, ShortcutWorkflowState> {
+  return new Map(states.map((state) => [state.id, state]))
 }
 
 /**
@@ -65,16 +92,18 @@ function item(story: ShortcutStory, stateNames: ReadonlyMap<number, string>): St
 export function buildStoryGroups(
   matches: readonly ShortcutStory[],
   parents: ReadonlyMap<number, ShortcutStory>,
-  states: readonly ShortcutWorkflowState[]
+  states: readonly ShortcutWorkflowState[],
+  worktrees: WorktreeIndex = new Map()
 ): StoryGroup[] {
-  const stateNames = new Map(states.map((state) => [state.id, state.name]))
+  const byId = statesById(states)
+  const item = (story: ShortcutStory) => toStoryItem(story, byId, worktrees)
   const matchedById = new Map(matches.map((story) => [story.id, story]))
   const groups = new Map<number, StoryGroup>()
 
   const groupFor = (story: ShortcutStory, matched: boolean): StoryGroup => {
     let group = groups.get(story.id)
     if (!group) {
-      group = { story: item(story, stateNames), matched, subtasks: [] }
+      group = { story: item(story), matched, subtasks: [] }
       groups.set(story.id, group)
     }
     group.matched ||= matched
@@ -90,7 +119,7 @@ export function buildStoryGroups(
     if (parent) {
       // The parent is a group even when it only shows as context for this sub-task.
       groupFor(parent, matchedById.has(parent.id) && parent.parentStoryId === null).subtasks.push(
-        item(story, stateNames)
+        item(story)
       )
     } else {
       // A parent Shortcut could not return (deleted, or no access): keep the sub-task visible.

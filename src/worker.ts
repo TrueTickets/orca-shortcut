@@ -2,7 +2,14 @@
 // file when it loads: no build step. It is the only part of the plugin that talks to Shortcut —
 // panel frames have no network — and the only part that ever sees the API token.
 import type { OrcaWorkerApi } from 'orca/worker'
-import type { AuthStatus, StoryFilter, StoryList } from './protocol'
+import type {
+  AuthStatus,
+  FocusedStory,
+  StoryFilter,
+  StoryList,
+  WorktreeList,
+  WorktreeRef
+} from './protocol'
 import {
   codedError,
   createShortcutClient,
@@ -14,8 +21,17 @@ import {
   buildSearchQuery,
   buildStoryGroups,
   normalizeFilter,
+  statesById,
+  toStoryItem,
   workflowStateOptions
 } from './story-tree'
+import {
+  FLAG_TEXT,
+  indexWorktrees,
+  linkWorktrees,
+  shortBranch,
+  storyIdOfBranch
+} from './worktree-links'
 
 /** Secret key for the Shortcut API token. */
 const TOKEN = 'shortcutToken'
@@ -75,7 +91,36 @@ async function connectedClient(
 }
 
 /** How many stories the worker fetches from Shortcut at once. */
-const PARENT_FETCH_CONCURRENCY = 6
+const STORY_FETCH_CONCURRENCY = 6
+
+/** Fetches stories by id, a few at a time; one Shortcut cannot return is logged and left out. */
+async function fetchStories(
+  orca: OrcaWorkerApi,
+  client: ShortcutClient,
+  ids: readonly number[],
+  why: string,
+  signal?: AbortSignal
+): Promise<Map<number, ShortcutStory>> {
+  const stories = new Map<number, ShortcutStory>()
+  for (let start = 0; start < ids.length; start += STORY_FETCH_CONCURRENCY) {
+    const batch = ids.slice(start, start + STORY_FETCH_CONCURRENCY)
+    const settled = await Promise.allSettled(batch.map((id) => client.getStory(id, signal)))
+    settled.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        stories.set(result.value.id, result.value)
+      } else {
+        orca.log(`Could not fetch ${why} sc-${batch[index]}: ${String(result.reason)}`)
+      }
+    })
+  }
+  return stories
+}
+
+/** Orca's worktrees whose branch names a story, read live, by story id. */
+async function worktreeIndex(orca: OrcaWorkerApi): Promise<Map<number, WorktreeRef[]>> {
+  const { workspaces } = await orca.host.call('workspace.list', { includeStatus: true })
+  return indexWorktrees(workspaces)
+}
 
 async function listStories(
   orca: OrcaWorkerApi,
@@ -86,13 +131,14 @@ async function listStories(
   const fallback = await defaultFilter(orca)
   const filter = requested ? normalizeFilter(requested, fallback) : fallback
 
-  const [workflowStates, searches] = await Promise.all([
+  const [workflowStates, searches, worktrees] = await Promise.all([
     client.listWorkflowStates(signal),
     Promise.all(
       filter.states.map((state) =>
         client.searchStories(buildSearchQuery(state, filter.owner, mentionName), { signal })
       )
-    )
+    ),
+    worktreeIndex(orca)
   ])
 
   const matches = new Map<number, ShortcutStory>()
@@ -110,31 +156,100 @@ async function listStories(
         .filter((id): id is number => id !== null && !matches.has(id))
     )
   ]
-  const parents = new Map<number, ShortcutStory>()
-  for (let start = 0; start < missing.length; start += PARENT_FETCH_CONCURRENCY) {
-    const batch = missing.slice(start, start + PARENT_FETCH_CONCURRENCY)
-    const settled = await Promise.allSettled(batch.map((id) => client.getStory(id, signal)))
-    settled.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        parents.set(result.value.id, result.value)
-      } else {
-        orca.log(`Could not fetch parent story sc-${batch[index]}: ${String(result.reason)}`)
-      }
-    })
-  }
+  const parents = await fetchStories(orca, client, missing, 'parent story', signal)
 
   return {
     filter,
     states: workflowStateOptions(workflowStates),
-    groups: buildStoryGroups([...matches.values()], parents, workflowStates),
+    groups: buildStoryGroups([...matches.values()], parents, workflowStates, worktrees),
     truncated: searches.some((search) => search.truncated)
   }
 }
 
+/** Every worktree whose branch names a story, with that story as Shortcut has it now. */
+async function listWorktrees(
+  orca: OrcaWorkerApi,
+  focusedBranch: string | null,
+  signal?: AbortSignal
+): Promise<WorktreeList> {
+  const { client } = await connectedClient(orca)
+  const [index, workflowStates] = await Promise.all([
+    worktreeIndex(orca),
+    client.listWorkflowStates(signal)
+  ])
+  const fetched = await fetchStories(orca, client, [...index.keys()], 'linked story', signal)
+  const states = statesById(workflowStates)
+  const items = new Map(
+    [...fetched.values()].map((story) => [story.id, toStoryItem(story, states, index)])
+  )
+  return { worktrees: linkWorktrees(index, items, focusedBranch) }
+}
+
+/** The status bar item that names the focused worktree's story. */
+const FOCUSED_ITEM = 'focused-story'
+
+async function showFocusedStory(orca: OrcaWorkerApi, focus: FocusedStory): Promise<void> {
+  const hide = () => orca.host.call('statusBar.update', { id: FOCUSED_ITEM, visible: false })
+  if (focus.storyId === null) {
+    await hide()
+    return
+  }
+  let client: ShortcutClient
+  try {
+    ;({ client } = await connectedClient(orca))
+  } catch {
+    // Not connected: nothing to name.
+    await hide()
+    return
+  }
+  const [story, workflowStates, index] = await Promise.all([
+    client.getStory(focus.storyId),
+    client.listWorkflowStates(),
+    worktreeIndex(orca)
+  ])
+  const item = toStoryItem(story, statesById(workflowStates), index)
+  const problems = item.flags.filter((flag) => flag !== 'no-worktree')
+  await orca.host.call('statusBar.update', {
+    id: FOCUSED_ITEM,
+    text: `sc-${item.id} · ${item.state}`,
+    icon: problems.length > 0 ? 'warning' : 'branch',
+    tone: problems.length > 0 ? 'warning' : 'neutral',
+    tooltip: [item.name, ...problems.map((flag) => FLAG_TEXT[flag])].join('\n'),
+    visible: true
+  })
+}
+
 export default function activate(orca: OrcaWorkerApi): void {
+  /** The focused worktree, from `workspace.changed`; Orca sends the current one on subscribing. */
+  let focus: FocusedStory = { branch: null, storyId: null }
+
+  orca.events.on('workspace.changed', async ({ context }) => {
+    const branch = context?.branch ? shortBranch(context.branch) : null
+    const storyId = storyIdOfBranch(branch)
+    if (branch === focus.branch && storyId === focus.storyId) {
+      return
+    }
+    focus = { branch, storyId }
+    orca.panels.post('focus.changed', focus)
+    await showFocusedStory(orca, focus).catch((error: unknown) =>
+      orca.log(`Could not show the focused story: ${String(error)}`)
+    )
+  })
+  for (const event of ['workspace.created', 'workspace.removed'] as const) {
+    orca.events.on(event, () => orca.panels.post('worktrees.changed', null))
+  }
+
+  orca.panels.handle('focus.get', () => focus)
   orca.panels.handle('stories.list', (input, { signal }) =>
     listStories(orca, input?.filter, signal)
   )
+  orca.panels.handle('worktrees.list', (_input, { signal }) =>
+    listWorktrees(orca, focus.branch, signal)
+  )
+  orca.panels.handle('worktrees.open', async ({ workspaceId }) => {
+    await orca.host.call('workspace.open', { workspaceId })
+    return null
+  })
 
   orca.panels.handle('auth.status', () => status(orca))
 

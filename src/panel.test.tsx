@@ -2,6 +2,7 @@
 import { assert, hostError, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
 import type { AuthStatus, StoryFilter, StoryList } from './protocol'
+import { storyItem } from './test-fixtures'
 
 const disconnected: AuthStatus = { connected: false, secretsAvailable: true }
 const noKeyStore: AuthStatus = { connected: false, secretsAvailable: false }
@@ -87,15 +88,24 @@ const list: StoryList = {
   ],
   groups: [
     {
-      story: { id: 30, name: 'Lone story', url: 'https://app.shortcut.com/ws/story/30', state: 'Ready', parentId: null, subTaskCount: 0 },
+      story: storyItem(30, { name: 'Lone story', url: 'https://app.shortcut.com/ws/story/30' }),
       matched: true,
       subtasks: []
     },
     {
-      story: { id: 10, name: 'Parent story', url: 'https://app.shortcut.com/ws/story/10', state: 'In Progress (Stories)', parentId: null, subTaskCount: 2 },
+      story: storyItem(10, {
+        name: 'Parent story',
+        state: 'In Progress (Stories)',
+        stateType: 'started',
+        subTaskCount: 2
+      }),
       matched: false,
       subtasks: [
-        { id: 11, name: 'First sub-task', url: 'https://app.shortcut.com/ws/story/11', state: 'Ready', parentId: 10, subTaskCount: 0 }
+        storyItem(11, {
+          name: 'First sub-task',
+          url: 'https://app.shortcut.com/ws/story/11',
+          parentId: 10
+        })
       ]
     }
   ],

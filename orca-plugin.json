@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "description": "Shortcut stories and sub-tasks in Orca: browse your work, start worktrees from sub-tasks and keep Shortcut in step.",
   "engines": {
-    "orca": ">=1.4.248"
+    "orca": ">=1.4.259"
   },
   "execution": "trusted-worker",
   "pluginApi": 1,
@@ -44,6 +44,52 @@
           "Unassigned"
         ],
         "default": "me"
+      },
+      {
+        "key": "subtaskStartedState",
+        "title": "Started sub-task state",
+        "description": "The workflow state a sub-task moves to when you start work on it. Never moves a sub-task back.",
+        "type": "string",
+        "default": "In Development (Sub-tasks)"
+      },
+      {
+        "key": "storyStartedState",
+        "title": "Started story state",
+        "description": "The workflow state a story moves to when work starts on one of its sub-tasks, if it has not started yet.",
+        "type": "string",
+        "default": "In Progress (Stories)"
+      },
+      {
+        "key": "requireSubtask",
+        "title": "Work only on sub-tasks",
+        "description": "Start worktrees only from sub-tasks, never from the stories they belong to.",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "defaultAgent",
+        "title": "Default agent",
+        "description": "The agent offered first when you start work.",
+        "type": "string",
+        "enum": [
+          "claude",
+          "codex",
+          "gemini",
+          "opencode",
+          "copilot",
+          "cursor",
+          "none"
+        ],
+        "enumLabels": [
+          "Claude",
+          "Codex",
+          "Gemini",
+          "OpenCode",
+          "Copilot",
+          "Cursor",
+          "No agent"
+        ],
+        "default": "claude"
       }
     ],
     "events": [
@@ -80,6 +126,12 @@
     },
     {
       "kind": "workspace:write"
+    },
+    {
+      "kind": "workspace:create"
+    },
+    {
+      "kind": "agent:launch"
     }
   ],
   "license": "MIT"

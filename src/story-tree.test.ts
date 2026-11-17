@@ -9,11 +9,11 @@ import {
 } from './story-tree'
 
 const STATES: ShortcutWorkflowState[] = [
-  { id: 1, name: 'New', type: 'backlog', position: 0 },
-  { id: 2, name: 'Ready', type: 'unstarted', position: 3 },
-  { id: 3, name: 'In Progress (Stories)', type: 'started', position: 4 },
-  { id: 4, name: 'In Development (Sub-tasks)', type: 'started', position: 5 },
-  { id: 5, name: 'Complete', type: 'done', position: 9 }
+  { id: 1, name: 'New', type: 'backlog', position: 0, workflowId: 1 },
+  { id: 2, name: 'Ready', type: 'unstarted', position: 3, workflowId: 1 },
+  { id: 3, name: 'In Progress (Stories)', type: 'started', position: 4, workflowId: 1 },
+  { id: 4, name: 'In Development (Sub-tasks)', type: 'started', position: 5, workflowId: 1 },
+  { id: 5, name: 'Complete', type: 'done', position: 9, workflowId: 1 }
 ]
 
 function story(id: number, fields: Partial<ShortcutStory> = {}): ShortcutStory {
@@ -23,10 +23,12 @@ function story(id: number, fields: Partial<ShortcutStory> = {}): ShortcutStory {
     appUrl: `https://app.shortcut.com/ws/story/${id}`,
     storyType: 'feature',
     archived: false,
+    workflowId: 1,
     workflowStateId: 2,
     parentStoryId: null,
     subTaskIds: [],
     ownerIds: [],
+    description: '',
     ...fields
   }
 }
@@ -44,9 +46,9 @@ test('builds one search query per state and owner', () => {
 
 test('names each workflow state once, in workflow order', () => {
   const states: ShortcutWorkflowState[] = [
-    { id: 9, name: 'Done', type: 'done', position: 2 },
-    { id: 7, name: 'Ready', type: 'unstarted', position: 1 },
-    { id: 8, name: 'Ready', type: 'unstarted', position: 1 }
+    { id: 9, name: 'Done', type: 'done', position: 2, workflowId: 1 },
+    { id: 7, name: 'Ready', type: 'unstarted', position: 1, workflowId: 1 },
+    { id: 8, name: 'Ready', type: 'unstarted', position: 1, workflowId: 1 }
   ]
   assert.deepEqual(workflowStateOptions(states), [
     { name: 'Ready', type: 'unstarted' },
@@ -121,6 +123,7 @@ test('attaches the worktrees whose branch names each story, and flags what is of
     branch,
     path: `/w/${workspaceId}`,
     project: 'infra',
+    projectId: 'project-infra',
     agent: null
   })
   const worktrees = new Map([

@@ -18,6 +18,14 @@ declare module 'orca' {
     'worktrees.list': { output: WorktreeList }
     /** The focused worktree's branch and story, as last reported by Orca. */
     'focus.get': { output: FocusedStory }
+    /** What starting work on a story offers: projects, the branch it would use, agents. */
+    'work.options': { input: { storyId: number }; output: WorkOptions }
+    /**
+     * Starts work on a sub-task: opens its worktree if it has one; otherwise creates one in
+     * `projectId`, puts it on the Shortcut branch, moves the sub-task and its story along in
+     * Shortcut and, with `agent`, starts that agent on it.
+     */
+    'work.start': { input: { storyId: number; projectId: string; agent: string | null }; output: StartResult }
     /** Shows a worktree in Orca, as clicking it in the sidebar does. */
     'worktrees.open': { input: { workspaceId: string }; output: null }
   }
@@ -56,6 +64,8 @@ export type WorktreeRef = {
   branch: string
   path: string
   project: string | null
+  /** The id `project.list` gives the worktree's project. */
+  projectId: string | null
   /** The agent status Orca shows for the worktree, when it reports one. */
   agent: AgentState | null
 }
@@ -112,4 +122,28 @@ export type StoryList = {
   groups: StoryGroup[]
   /** True when a state had more matches than the plugin fetched. */
   truncated: boolean
+}
+
+export type ProjectOption = { id: string; name: string; hostId: string | null }
+
+export type WorkOptions = {
+  /** Git projects a worktree can be made in. */
+  projects: ProjectOption[]
+  suggestedProjectId: string | null
+  /** The branch the worktree would be put on. */
+  branch: string
+  /** Agents Orca can start, by id; the setting's default first. */
+  agents: string[]
+  defaultAgent: string | null
+}
+
+export type StartResult = {
+  workspaceId: string
+  branch: string
+  /** True when the sub-task already had a worktree, which was opened instead. */
+  existing: boolean
+  /** What was done, one line each. */
+  done: string[]
+  /** What could not be done; the worktree exists either way. */
+  warnings: string[]
 }

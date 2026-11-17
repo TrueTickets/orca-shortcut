@@ -1,7 +1,9 @@
 // The plugin's own worker. Orca starts it on the panel's first plugin.request and transpiles this
 // file when it loads: no build step. It is the only part of the plugin that talks to Shortcut —
 // panel frames have no network — and the only part that ever sees the API token.
+import { execFile } from 'node:child_process'
 import type { OrcaWorkerApi } from 'orca/worker'
+import type { GitRunner } from './git-branch'
 import type {
   AuthStatus,
   FocusedStory,
@@ -33,15 +35,26 @@ import {
   shortBranch,
   storyIdOfBranch
 } from './worktree-links'
+import { startWork, workOptions, type WorkContext } from './work-actions'
 
 /** Secret key for the Shortcut API token. */
 const TOKEN = 'shortcutToken'
 /** Storage key for who the token belongs to, so status needs no network call. Not secret. */
 const MEMBER = 'member'
 
-/** Swapped by tests; the worker otherwise uses Node's global fetch. */
-export const deps: { fetch: FetchLike } = {
-  fetch: (url, init) => globalThis.fetch(url, init)
+/** Runs git without a shell, so a branch name is only ever an argument. */
+const runGit: GitRunner = (args, cwd) =>
+  new Promise((resolve) => {
+    execFile('git', [...args], { cwd, timeout: 30_000 }, (error, stdout, stderr) => {
+      const code = error ? (typeof error.code === 'number' ? error.code : 1) : 0
+      resolve({ code, stdout: String(stdout), stderr: String(stderr || error?.message || '') })
+    })
+  })
+
+/** Swapped by tests; the worker otherwise uses Node's global fetch and the git on the PATH. */
+export const deps: { fetch: FetchLike; git: GitRunner } = {
+  fetch: (url, init) => globalThis.fetch(url, init),
+  git: runGit
 }
 
 type StoredMember = { name: string; mentionName: string; workspaceName: string }
@@ -250,6 +263,15 @@ export default function activate(orca: OrcaWorkerApi): void {
   orca.panels.handle('worktrees.list', (_input, { signal }) =>
     listWorktrees(orca, focus.branch, signal)
   )
+  const workContext = async (): Promise<WorkContext> => {
+    const { client, mentionName } = await connectedClient(orca)
+    return { client, mentionName, git: deps.git }
+  }
+  orca.panels.handle('work.options', async ({ storyId }, { signal }) =>
+    workOptions(orca, await workContext(), storyId, signal)
+  )
+  orca.panels.handle('work.start', async (input) => startWork(orca, await workContext(), input))
+
   orca.panels.handle('worktrees.open', async ({ workspaceId }) => {
     await orca.host.call('workspace.open', { workspaceId })
     return null

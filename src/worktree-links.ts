@@ -15,6 +15,7 @@ export type ListedWorkspace = {
   kind: 'worktree' | 'folder'
   name: string
   project?: string | null
+  projectId?: string | null
   path: string
   branch: string | null
   status?: { state: string }
@@ -58,6 +59,7 @@ export function indexWorktrees(workspaces: readonly ListedWorkspace[]): Map<numb
       branch: shortBranch(workspace.branch),
       path: workspace.path,
       project: workspace.project ?? null,
+      projectId: workspace.projectId ?? null,
       agent: agentOf(workspace)
     }
     index.set(storyId, [...(index.get(storyId) ?? []), ref])

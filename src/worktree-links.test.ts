@@ -45,7 +45,7 @@ test('strips refs/heads/ only at the start', () => {
 
 test('indexes worktrees by story, skipping folders and branchless rows', () => {
   const workspaces: ListedWorkspace[] = [
-    { id: 'a', kind: 'worktree', name: 'one', project: 'infra', path: '/a', branch: 'refs/heads/ada/sc-1/x', status: { state: 'working' } },
+    { id: 'a', kind: 'worktree', name: 'one', project: 'infra', projectId: 'p1', path: '/a', branch: 'refs/heads/ada/sc-1/x', status: { state: 'working' } },
     { id: 'b', kind: 'worktree', name: 'two', project: null, path: '/b', branch: 'ada/sc-1-again' },
     { id: 'c', kind: 'worktree', name: 'main', path: '/c', branch: 'main' },
     { id: 'd', kind: 'folder', name: 'sc-2 notes', path: '/d', branch: 'sc-2' },
@@ -55,8 +55,8 @@ test('indexes worktrees by story, skipping folders and branchless rows', () => {
   const index = indexWorktrees(workspaces)
   assert.deepEqual([...index.keys()].sort(), [1, 3])
   assert.deepEqual(index.get(1), [
-    { workspaceId: 'a', name: 'one', branch: 'ada/sc-1/x', path: '/a', project: 'infra', agent: 'working' },
-    { workspaceId: 'b', name: 'two', branch: 'ada/sc-1-again', path: '/b', project: null, agent: null }
+    { workspaceId: 'a', name: 'one', branch: 'ada/sc-1/x', path: '/a', project: 'infra', projectId: 'p1', agent: 'working' },
+    { workspaceId: 'b', name: 'two', branch: 'ada/sc-1-again', path: '/b', project: null, projectId: null, agent: null }
   ])
   // An agent state Orca adds later is not passed on as one the panel knows.
   assert.equal(index.get(3)?.[0].agent, null)

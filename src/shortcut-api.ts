@@ -35,10 +35,14 @@ export type ShortcutStory = {
   appUrl: string
   storyType: string
   archived: boolean
+  /** The workflow its states come from; null when Shortcut leaves it out. */
+  workflowId: number | null
   workflowStateId: number
   parentStoryId: number | null
   subTaskIds: number[]
   ownerIds: string[]
+  /** Markdown; empty in slim search results, which leave it out. */
+  description: string
 }
 
 export type ShortcutWorkflowState = {
@@ -46,7 +50,11 @@ export type ShortcutWorkflowState = {
   name: string
   type: string
   position: number
+  workflowId: number
 }
+
+/** The story fields the plugin changes. */
+export type StoryUpdate = { workflowStateId?: number; ownerIds?: string[] }
 
 export type StorySearchResult = {
   stories: ShortcutStory[]
@@ -66,6 +74,7 @@ export type ShortcutClient = {
   getStory(id: number, signal?: AbortSignal): Promise<ShortcutStory>
   /** Every state of every workflow in the workspace. */
   listWorkflowStates(signal?: AbortSignal): Promise<ShortcutWorkflowState[]>
+  updateStory(id: number, update: StoryUpdate, signal?: AbortSignal): Promise<ShortcutStory>
 }
 
 type RawStory = {
@@ -74,10 +83,12 @@ type RawStory = {
   app_url?: unknown
   story_type?: unknown
   archived?: unknown
+  workflow_id?: unknown
   workflow_state_id?: unknown
   parent_story_id?: unknown
   sub_task_story_ids?: unknown
   owner_ids?: unknown
+  description?: unknown
 }
 
 function toStory(raw: RawStory): ShortcutStory {
@@ -90,6 +101,7 @@ function toStory(raw: RawStory): ShortcutStory {
     appUrl: String(raw.app_url ?? ''),
     storyType: String(raw.story_type ?? ''),
     archived: raw.archived === true,
+    workflowId: typeof raw.workflow_id === 'number' ? raw.workflow_id : null,
     workflowStateId: raw.workflow_state_id,
     parentStoryId: typeof raw.parent_story_id === 'number' ? raw.parent_story_id : null,
     subTaskIds: Array.isArray(raw.sub_task_story_ids)
@@ -97,19 +109,26 @@ function toStory(raw: RawStory): ShortcutStory {
       : [],
     ownerIds: Array.isArray(raw.owner_ids)
       ? raw.owner_ids.filter((id): id is string => typeof id === 'string')
-      : []
+      : [],
+    description: typeof raw.description === 'string' ? raw.description : ''
   }
 }
 
 export function createShortcutClient(token: string, fetchImpl: FetchLike): ShortcutClient {
   /** `path` is relative to the API base, or a server-given path that starts with `/api/v3`. */
-  async function request(method: string, path: string, signal?: AbortSignal): Promise<unknown> {
+  async function request(
+    method: string,
+    path: string,
+    signal?: AbortSignal,
+    body?: unknown
+  ): Promise<unknown> {
     const url = path.startsWith('/api/') ? `${SHORTCUT_ORIGIN}${path}` : `${SHORTCUT_API_BASE}${path}`
     let response: Awaited<ReturnType<FetchLike>>
     try {
       response = await fetchImpl(url, {
         method,
         headers: { 'Content-Type': 'application/json', 'Shortcut-Token': token },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal
       })
     } catch (error) {
@@ -183,9 +202,10 @@ export function createShortcutClient(token: string, fetchImpl: FetchLike): Short
 
     async listWorkflowStates(signal) {
       const body = await request('GET', '/workflows', signal)
-      const workflows = Array.isArray(body) ? (body as { states?: unknown }[]) : []
+      const workflows = Array.isArray(body) ? (body as { id?: unknown; states?: unknown }[]) : []
       const states: ShortcutWorkflowState[] = []
       for (const workflow of workflows) {
+        const workflowId = typeof workflow?.id === 'number' ? workflow.id : 0
         for (const raw of Array.isArray(workflow?.states) ? workflow.states : []) {
           const state = raw as { id?: unknown; name?: unknown; type?: unknown; position?: unknown }
           if (typeof state.id === 'number' && typeof state.name === 'string') {
@@ -193,12 +213,24 @@ export function createShortcutClient(token: string, fetchImpl: FetchLike): Short
               id: state.id,
               name: state.name,
               type: String(state.type ?? ''),
-              position: typeof state.position === 'number' ? state.position : 0
+              position: typeof state.position === 'number' ? state.position : 0,
+              workflowId
             })
           }
         }
       }
       return states
+    },
+
+    async updateStory(id, update, signal) {
+      const body: Record<string, unknown> = {}
+      if (update.workflowStateId !== undefined) {
+        body.workflow_state_id = update.workflowStateId
+      }
+      if (update.ownerIds !== undefined) {
+        body.owner_ids = update.ownerIds
+      }
+      return toStory((await request('PUT', `/stories/${id}`, signal, body)) as RawStory)
     }
   }
 }

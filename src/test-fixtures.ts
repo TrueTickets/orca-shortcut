@@ -31,6 +31,7 @@ export function worktreeRef(storyId: number, fields: Partial<WorktreeRef> = {}):
     branch: `ada/sc-${storyId}/work`,
     path: `/work/sc-${storyId}`,
     project: 'engines',
+    projectId: 'project-engines',
     agent: null,
     ...fields
   }

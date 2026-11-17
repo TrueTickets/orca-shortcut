@@ -5,7 +5,6 @@ import {
   Box,
   Button,
   Callout,
-  Heading,
   IconButton,
   Input,
   plugin,
@@ -112,7 +111,10 @@ export default function Panel() {
   const problem = read(error)
   const header = (
     <Row justify="between">
-      <Heading>Shortcut</Heading>
+      {/* A small label, as Orca's left sidebar heads its list ("Projects"). */}
+      <Text size="sm" weight="semibold" muted>
+        Shortcut
+      </Text>
       {status?.connected ? (
         <IconButton
           icon="refresh"

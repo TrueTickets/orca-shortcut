@@ -118,16 +118,22 @@ type View = Awaited<ReturnType<typeof mount>>
 /** Each row as Orca draws it: title, second line, icon, highlight, and its pills. */
 function rows(view: View) {
   const badges = view.findAll({ type: 'Badge' })
-  return view.findAll({ type: 'ListItem' }).map((row: Element) => ({
-    title: row.props?.title as string,
-    description: row.props?.description as string,
-    icon: row.props?.icon as string,
-    current: row.props?.current === true,
-    // A badge belongs to the row whose path its own path extends.
-    pills: badges
-      .filter((badge: Element) => badge.path.startsWith(`${row.path}/`))
-      .map((badge: Element) => `${(badge.props?.tone as string) ?? 'neutral'}:${badge.text}`)
-  }))
+  const texts = view.findAll({ type: 'Text' })
+  // An element belongs to the row whose path its own path extends.
+  const inRow = (row: Element) => (element: Element) => element.path.startsWith(`${row.path}/`)
+  return view.findAll({ type: 'ListItem' }).map((row: Element) => {
+    // The row draws its own two lines (see RowText): the title, then the second line.
+    const [title, description] = texts.filter(inRow(row)).map((text: Element) => text.text)
+    return {
+      title,
+      description,
+      icon: row.props?.icon as string,
+      current: row.props?.current === true,
+      pills: badges
+        .filter(inRow(row))
+        .map((badge: Element) => `${(badge.props?.tone as string) ?? 'neutral'}:${badge.text}`)
+    }
+  })
 }
 
 test('lists sub-tasks under a header for their story, as Orca lists worktrees', async () => {

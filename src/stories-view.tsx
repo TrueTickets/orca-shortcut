@@ -20,7 +20,8 @@ import {
   Spinner,
   Stack,
   Text,
-  type IconName
+  type IconName,
+  type OrcaNode
 } from 'orca'
 import type { StoryFilter, StoryGroup, StoryItem, StoryList, StoryOwner } from './protocol'
 import {
@@ -97,14 +98,46 @@ function StatePill({ item }: { item: StoryItem }) {
 
 function Pills({ item }: { item: StoryItem }) {
   return (
-    <Row gap="xs" wrap>
+    <Box direction="row" gap="xs" shrink={false}>
       <StatePill item={item} />
       {item.flags.map((flag) => (
         <Badge key={flag} tone={isProblem(flag) ? 'danger' : 'neutral'}>
           {FLAG_PILL[flag]}
         </Badge>
       ))}
-    </Row>
+    </Box>
+  )
+}
+
+/**
+ * A row's two lines as Orca's left sidebar draws a worktree: the title alone on the first line,
+ * the branch under it, with the row's markers at the end of the second line. Pills on a line of
+ * their own made rows a third taller than the sidebar's, and on the title line they squeezed
+ * the title; the branch can lose its end instead.
+ */
+export function RowText({
+  title,
+  description,
+  children
+}: {
+  title: string
+  description: string
+  children?: OrcaNode
+}) {
+  return (
+    <Stack gap="none">
+      <Text size="sm" truncate>
+        {title}
+      </Text>
+      <Box direction="row" gap="sm" justify="between">
+        <Box grow shrink minWidth={0}>
+          <Text size="xs" muted truncate>
+            {description}
+          </Text>
+        </Box>
+        {children}
+      </Box>
+    </Stack>
   )
 }
 
@@ -112,13 +145,13 @@ function StoryRow({ item, focusedStoryId }: { item: StoryItem; focusedStoryId: n
   const key = keyOf(item.id)
   return (
     <ListItem
-      title={item.name}
-      description={descriptionOf(item, focusedStoryId)}
       icon={iconOf(item)}
       current={read(selected) === key}
       onPress={() => set(selected, key)}
     >
-      <Pills item={item} />
+      <RowText title={item.name} description={descriptionOf(item, focusedStoryId)}>
+        <Pills item={item} />
+      </RowText>
     </ListItem>
   )
 }

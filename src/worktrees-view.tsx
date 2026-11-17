@@ -2,6 +2,7 @@
 // the story's state now and what is off. Problems first.
 import {
   Badge,
+  Box,
   Callout,
   EmptyState,
   List,
@@ -16,6 +17,7 @@ import {
 import type { LinkedWorktree } from './protocol'
 import { keyOf, openWorktree, worktrees, worktreesError } from './state'
 import { shortStateName, toneOfState } from './state-tone'
+import { RowText } from './stories-view'
 import { FLAG_PILL, FLAG_TEXT, isProblem } from './worktree-links'
 
 const AGENT_TEXT: Record<string, string> = {
@@ -45,14 +47,12 @@ function WorktreeRow({ worktree }: { worktree: LinkedWorktree }) {
     .join(' · ')
   return (
     <ListItem
-      title={worktree.story?.name ?? worktree.name}
-      description={description}
       icon={iconOf(worktree)}
       current={worktree.focused}
       onPress={() => void openWorktree(worktree.workspaceId)}
     >
-      <Stack gap="xs">
-        <Row gap="xs" wrap>
+      <RowText title={worktree.story?.name ?? worktree.name} description={description}>
+        <Box direction="row" gap="xs" shrink={false}>
           {worktree.story ? (
             <Badge tone={toneOfState(worktree.story.state, worktree.story.stateType)}>
               {shortStateName(worktree.story.state)}
@@ -63,13 +63,14 @@ function WorktreeRow({ worktree }: { worktree: LinkedWorktree }) {
               {FLAG_PILL[flag]}
             </Badge>
           ))}
-        </Row>
-        {worktree.flags.length > 0 ? (
-          <Text tone={worktree.flags.some(isProblem) ? 'warning' : 'accent'} size="xs">
-            {worktree.flags.map((flag) => FLAG_TEXT[flag]).join(' ')}
-          </Text>
-        ) : null}
-      </Stack>
+        </Box>
+      </RowText>
+      {/* Only a flagged worktree gets a third line: what to do about it. */}
+      {worktree.flags.length > 0 ? (
+        <Text tone={worktree.flags.some(isProblem) ? 'warning' : 'accent'} size="xs">
+          {worktree.flags.map((flag) => FLAG_TEXT[flag]).join(' ')}
+        </Text>
+      ) : null}
     </ListItem>
   )
 }

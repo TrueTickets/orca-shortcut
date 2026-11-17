@@ -140,3 +140,13 @@ export const FLAG_TEXT: Record<WorktreeFlag, string> = {
   'missing-story': 'Shortcut has no such story, or this token cannot see it.',
   'not-started': 'Has a worktree but is still in a backlog state: move it along in Shortcut.'
 }
+
+/** Short pill text for each flag; the card spells it out. */
+export const FLAG_PILL: Record<WorktreeFlag, string> = {
+  'no-worktree': 'no worktree',
+  duplicate: 'duplicate',
+  'on-story': 'on story',
+  stale: 'stale',
+  'missing-story': 'missing',
+  'not-started': 'not started'
+}

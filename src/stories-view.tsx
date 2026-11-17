@@ -1,12 +1,17 @@
-// The Stories tab: sub-tasks under their parent story, each marked with the worktree its branch
-// names, and the focused worktree's story selected.
+// The Stories tab, laid out like Orca's left sidebar: each parent story as a plain header, its
+// sub-tasks as two-line rows under it, colour from small state pills. The selected item's card
+// is drawn by the panel, pinned under the list (see SelectedStory).
 import {
+  Badge,
+  Box,
   Button,
   Callout,
   Card,
   Checkbox,
   Collapsible,
   EmptyState,
+  List,
+  ListItem,
   read,
   Row,
   Select,
@@ -15,14 +20,11 @@ import {
   Spinner,
   Stack,
   Text,
-  Tree,
-  type IconName,
-  type TreeItem
+  type IconName
 } from 'orca'
 import type { StoryFilter, StoryGroup, StoryItem, StoryList, StoryOwner } from './protocol'
 import {
   chosenFilter,
-  expanded,
   focus,
   keyOf,
   list,
@@ -31,8 +33,9 @@ import {
   openWorktree,
   selected
 } from './state'
+import { shortStateName, toneOfState } from './state-tone'
 import { describeFilter } from './story-tree'
-import { FLAG_TEXT, isProblem } from './worktree-links'
+import { FLAG_PILL, FLAG_TEXT, isProblem } from './worktree-links'
 
 const OWNER_OPTIONS: readonly { value: StoryOwner; label: string }[] = [
   { value: 'me', label: 'Me' },
@@ -56,7 +59,7 @@ function toggleState(state: string, checked: boolean): void {
   }))
 }
 
-/** A row's icon: a problem first, then an agent at work, then a worktree, then the kind. */
+/** A row's icon: a problem first, a heads-up, an agent at work, a worktree, then the kind. */
 function iconOf(item: StoryItem): IconName {
   if (item.flags.some(isProblem)) {
     return 'warning'
@@ -73,74 +76,79 @@ function iconOf(item: StoryItem): IconName {
   return item.parentId === null ? 'book' : 'branch'
 }
 
-/** The short marks after a row's id: where you are, its worktree, and what is off. */
-function marksOf(item: StoryItem, focusedStoryId: number | null): string[] {
-  const marks: string[] = []
-  if (item.id === focusedStoryId) {
-    marks.push('here')
-  } else if (item.worktrees.some((worktree) => worktree.agent === 'working')) {
-    marks.push('agent working')
-  } else if (item.worktrees.length > 0) {
-    marks.push('worktree')
-  }
-  if (item.flags.includes('no-worktree')) {
-    marks.push('no worktree')
-  }
-  if (item.flags.includes('not-started')) {
-    marks.push('not started')
-  }
-  if (item.flags.includes('duplicate')) {
-    marks.push(`${item.worktrees.length} worktrees`)
-  }
-  return marks
+/** The second line: the id, then where its worktree stands. */
+function descriptionOf(item: StoryItem, focusedStoryId: number | null): string {
+  const worktree =
+    item.id === focusedStoryId
+      ? 'here'
+      : item.worktrees.some((candidate) => candidate.agent === 'working')
+        ? 'agent working'
+        : item.worktrees.length > 1
+          ? `${item.worktrees.length} worktrees`
+          : item.worktrees.length === 1
+            ? item.worktrees[0].name
+            : ''
+  return [keyOf(item.id), worktree].filter(Boolean).join(' · ')
 }
 
-/**
- * Rows are narrow, so a row names its state only when the filter spans several states and the
- * state tells rows apart; the detail card always shows it.
- */
-function treeItem(group: StoryGroup, showState: boolean, focusedStoryId: number | null): TreeItem {
-  // Marks come before the state: a narrow row cuts its end, and the marks matter more.
-  const describe = (item: StoryItem, matched: boolean, extra: string[] = []) =>
-    [
-      keyOf(item.id),
-      ...marksOf(item, focusedStoryId),
-      ...extra,
-      // A parent shown only as context keeps its state out: its state is not what was filtered.
-      showState && matched ? item.state : ''
-    ]
-      .filter(Boolean)
-      .join(' · ')
+function StatePill({ item }: { item: StoryItem }) {
+  return <Badge tone={toneOfState(item.state, item.stateType)}>{shortStateName(item.state)}</Badge>
+}
+
+function Pills({ item }: { item: StoryItem }) {
+  return (
+    <Row gap="xs" wrap>
+      <StatePill item={item} />
+      {item.flags.map((flag) => (
+        <Badge key={flag} tone={isProblem(flag) ? 'danger' : 'neutral'}>
+          {FLAG_PILL[flag]}
+        </Badge>
+      ))}
+    </Row>
+  )
+}
+
+function StoryRow({ item, focusedStoryId }: { item: StoryItem; focusedStoryId: number | null }) {
+  const key = keyOf(item.id)
+  return (
+    <ListItem
+      title={item.name}
+      description={descriptionOf(item, focusedStoryId)}
+      icon={iconOf(item)}
+      current={read(selected) === key}
+      onPress={() => set(selected, key)}
+    >
+      <Pills item={item} />
+    </ListItem>
+  )
+}
+
+/** A parent story as a header, like a project in Orca's left sidebar, with its sub-tasks under it. */
+function Group({ group, focusedStoryId }: { group: StoryGroup; focusedStoryId: number | null }) {
   const { story } = group
-  const noSubtasks = group.matched && story.parentId === null && story.subTaskCount === 0
-  return {
-    key: keyOf(story.id),
-    label: story.name,
-    description: describe(story, group.matched, noSubtasks ? ['no sub-tasks'] : []),
-    icon: iconOf(story),
-    children:
-      group.subtasks.length > 0
-        ? group.subtasks.map((subtask) => ({
-            key: keyOf(subtask.id),
-            label: subtask.name,
-            description: describe(subtask, true),
-            icon: iconOf(subtask)
-          }))
-        : undefined
+  if (group.subtasks.length === 0) {
+    // A story that matched on its own: one row, like any other.
+    return (
+      <List label={story.name}>
+        <StoryRow item={story} focusedStoryId={focusedStoryId} />
+      </List>
+    )
   }
-}
-
-function findItem(groups: readonly StoryGroup[], key: string | null): StoryItem | null {
-  for (const group of groups) {
-    if (keyOf(group.story.id) === key) {
-      return group.story
-    }
-    const subtask = group.subtasks.find((candidate) => keyOf(candidate.id) === key)
-    if (subtask) {
-      return subtask
-    }
-  }
-  return null
+  return (
+    <Stack gap="xs">
+      <Row justify="between" gap="sm">
+        <Text weight="semibold" size="sm" truncate>
+          {story.name}
+        </Text>
+        <StatePill item={story} />
+      </Row>
+      <List label={story.name}>
+        {group.subtasks.map((subtask) => (
+          <StoryRow key={subtask.id} item={subtask} focusedStoryId={focusedStoryId} />
+        ))}
+      </List>
+    </Stack>
+  )
 }
 
 function Filters({ current }: { current: StoryList }) {
@@ -169,25 +177,48 @@ function Filters({ current }: { current: StoryList }) {
   )
 }
 
-function Detail({ story }: { story: StoryItem }) {
+export function findItem(groups: readonly StoryGroup[], key: string | null): StoryItem | null {
+  for (const group of groups) {
+    if (keyOf(group.story.id) === key) {
+      return group.story
+    }
+    const subtask = group.subtasks.find((candidate) => keyOf(candidate.id) === key)
+    if (subtask) {
+      return subtask
+    }
+  }
+  return null
+}
+
+/** The selected story's card, pinned under the list so it stays in view. */
+export function SelectedStory() {
+  const current = read(list)
+  const story = current ? findItem(current.groups, read(selected)) : null
+  if (!story) {
+    return null
+  }
   const where =
     story.parentId === null
       ? `Story · ${story.subTaskCount} sub-task${story.subTaskCount === 1 ? '' : 's'}`
       : `Sub-task of ${keyOf(story.parentId)}`
   return (
-    <Card title={story.name} description={`${keyOf(story.id)} · ${story.state}`}>
+    <Card title={story.name} description={`${keyOf(story.id)} · ${where}`}>
       <Stack gap="sm">
-        <Text muted size="xs">
-          {where}
-        </Text>
+        <Pills item={story} />
         {story.flags.map((flag) => (
-          <Callout key={flag} tone={isProblem(flag) ? 'warning' : 'accent'} icon={isProblem(flag) ? 'warning' : 'flag'}>
+          <Callout
+            key={flag}
+            tone={isProblem(flag) ? 'warning' : 'accent'}
+            icon={isProblem(flag) ? 'warning' : 'flag'}
+          >
             {FLAG_TEXT[flag]}
           </Callout>
         ))}
         {story.worktrees.map((worktree) => (
           <Row key={worktree.workspaceId} justify="between">
-            <Text size="xs">{`${worktree.name} · ${worktree.branch}`}</Text>
+            <Text size="xs" muted truncate>
+              {worktree.branch}
+            </Text>
             <Button
               variant="ghost"
               icon="folder"
@@ -217,7 +248,6 @@ export function StoriesView() {
   if (current === null) {
     return problem ? <Callout tone="danger">{problem}</Callout> : <Spinner label="Loading stories" />
   }
-  const story = findItem(current.groups, read(selected))
   const focusedStoryId = read(focus).storyId
   return (
     <Stack gap="md">
@@ -229,23 +259,12 @@ export function StoriesView() {
       {current.groups.length === 0 ? (
         <EmptyState title="No stories" description="Nothing matches these filters." icon="search" />
       ) : (
-        <Tree
-          label="Stories"
-          items={current.groups.map((group) =>
-            treeItem(group, current.filter.states.length > 1, focusedStoryId)
-          )}
-          selected={read(selected) ?? undefined}
-          expanded={read(expanded)}
-          onSelect={({ key }) => set(selected, key)}
-          onToggle={({ key, expanded: open }) =>
-            set(
-              expanded,
-              open ? [...read(expanded), key] : read(expanded).filter((candidate) => candidate !== key)
-            )
-          }
-        />
+        <Box gap="lg">
+          {current.groups.map((group) => (
+            <Group key={group.story.id} group={group} focusedStoryId={focusedStoryId} />
+          ))}
+        </Box>
       )}
-      {story ? <Detail story={story} /> : null}
     </Stack>
   )
 }

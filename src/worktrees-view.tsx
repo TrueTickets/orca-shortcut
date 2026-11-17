@@ -1,11 +1,13 @@
 // The Worktrees tab: every worktree whose branch names a story, whatever the story filter, with
 // the story's state now and what is off. Problems first.
 import {
+  Badge,
   Callout,
   EmptyState,
   List,
   ListItem,
   read,
+  Row,
   Spinner,
   Stack,
   Text,
@@ -13,7 +15,8 @@ import {
 } from 'orca'
 import type { LinkedWorktree } from './protocol'
 import { keyOf, openWorktree, worktrees, worktreesError } from './state'
-import { FLAG_TEXT, isProblem } from './worktree-links'
+import { shortStateName, toneOfState } from './state-tone'
+import { FLAG_PILL, FLAG_TEXT, isProblem } from './worktree-links'
 
 const AGENT_TEXT: Record<string, string> = {
   working: 'agent working',
@@ -31,12 +34,10 @@ function iconOf(worktree: LinkedWorktree): IconName {
   return worktree.agent === 'working' || worktree.agent === 'permission' ? 'bot' : 'folder'
 }
 
-function Row({ worktree }: { worktree: LinkedWorktree }) {
-  const title = worktree.story
-    ? `${keyOf(worktree.storyId)} · ${worktree.story.name}`
-    : keyOf(worktree.storyId)
+/** Like a worktree in Orca's left sidebar: the story on top, the branch under it, then pills. */
+function WorktreeRow({ worktree }: { worktree: LinkedWorktree }) {
   const description = [
-    worktree.story?.state,
+    keyOf(worktree.storyId),
     worktree.agent ? AGENT_TEXT[worktree.agent] : undefined,
     worktree.branch
   ]
@@ -44,17 +45,31 @@ function Row({ worktree }: { worktree: LinkedWorktree }) {
     .join(' · ')
   return (
     <ListItem
-      title={title}
+      title={worktree.story?.name ?? worktree.name}
       description={description}
       icon={iconOf(worktree)}
       current={worktree.focused}
       onPress={() => void openWorktree(worktree.workspaceId)}
     >
-      {worktree.flags.length > 0 ? (
-        <Text tone={worktree.flags.some(isProblem) ? 'warning' : 'accent'} size="xs">
-          {worktree.flags.map((flag) => FLAG_TEXT[flag]).join(' ')}
-        </Text>
-      ) : null}
+      <Stack gap="xs">
+        <Row gap="xs" wrap>
+          {worktree.story ? (
+            <Badge tone={toneOfState(worktree.story.state, worktree.story.stateType)}>
+              {shortStateName(worktree.story.state)}
+            </Badge>
+          ) : null}
+          {worktree.flags.map((flag) => (
+            <Badge key={flag} tone={isProblem(flag) ? 'danger' : 'neutral'}>
+              {FLAG_PILL[flag]}
+            </Badge>
+          ))}
+        </Row>
+        {worktree.flags.length > 0 ? (
+          <Text tone={worktree.flags.some(isProblem) ? 'warning' : 'accent'} size="xs">
+            {worktree.flags.map((flag) => FLAG_TEXT[flag]).join(' ')}
+          </Text>
+        ) : null}
+      </Stack>
     </ListItem>
   )
 }
@@ -87,7 +102,7 @@ export function WorktreesView() {
           </Text>
           <List label="Worktrees">
             {current.worktrees.map((worktree) => (
-              <Row key={worktree.workspaceId} worktree={worktree} />
+              <WorktreeRow key={worktree.workspaceId} worktree={worktree} />
             ))}
           </List>
         </Stack>

@@ -19,7 +19,6 @@ export const list = atom<StoryList | null>(null)
 export const listLoading = atom(false)
 export const listError = atom<string | null>(null)
 export const selected = atom<string | null>(null)
-export const expanded = atom<readonly string[]>([])
 
 export const worktrees = atom<WorktreeList | null>(null)
 export const worktreesLoading = atom(false)
@@ -54,10 +53,6 @@ export async function loadStories(): Promise<void> {
       return
     }
     set(list, answer)
-    set(
-      expanded,
-      answer.groups.map((group) => keyOf(group.story.id))
-    )
   } catch (reason) {
     if (request === storiesRequest) {
       set(listError, messageOf(reason))

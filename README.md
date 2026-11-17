@@ -44,6 +44,11 @@ The plugin reads branches live from Orca,
 so worktrees made by hand count too,
 and nothing is stored that could go stale.
 
+- Rows are laid out like Orca's left sidebar:
+  each parent story is a header,
+  its sub-tasks are two-line rows under it,
+  and a pill coloured by workflow state follows each one
+  (backlog grey, Ready blue, in progress amber, review and done green).
 - Sub-tasks with a worktree are marked in the Stories tab,
   with the agent status Orca reports,
   and the focused worktree's sub-task is selected.

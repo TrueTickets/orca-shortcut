@@ -3,6 +3,7 @@ import type { StoryItem } from './protocol'
 import { storyItem, worktreeRef } from './test-fixtures'
 import {
   indexWorktrees,
+  isProblem,
   linkWorktrees,
   shortBranch,
   storyFlags,
@@ -112,4 +113,14 @@ test('the Worktrees tab never says a worktree has no worktree', () => {
   // A story item built before its worktree was indexed may carry the flag; the link drops it.
   const stories = new Map([[5, storyItem(5, { parentId: 1, flags: ['no-worktree'] })]])
   assert.deepEqual(linkWorktrees(index, stories, null)[0].flags, [])
+})
+
+test('a worktree on work still in the backlog is a heads-up, not a problem', () => {
+  const flags = flagsOf({ parentId: 9, stateType: 'backlog', worktrees: [worktreeRef(1)] })
+  assert.deepEqual(flags, ['not-started'])
+  assert.equal(isProblem('not-started'), false)
+  assert.equal(isProblem('stale'), true)
+  // Ready work with a worktree is about to start: no flag. Done wins over backlog.
+  assert.deepEqual(flagsOf({ parentId: 9, stateType: 'unstarted', worktrees: [worktreeRef(1)] }), [])
+  assert.deepEqual(flagsOf({ parentId: 9, stateType: 'backlog' }), [])
 })

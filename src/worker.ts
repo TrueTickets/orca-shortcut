@@ -28,6 +28,7 @@ import {
 import {
   FLAG_TEXT,
   indexWorktrees,
+  isProblem,
   linkWorktrees,
   shortBranch,
   storyIdOfBranch
@@ -208,13 +209,16 @@ async function showFocusedStory(orca: OrcaWorkerApi, focus: FocusedStory): Promi
     worktreeIndex(orca)
   ])
   const item = toStoryItem(story, statesById(workflowStates), index)
-  const problems = item.flags.filter((flag) => flag !== 'no-worktree')
+  // The focused worktree exists, so "no worktree" never applies here.
+  const flags = item.flags.filter((flag) => flag !== 'no-worktree')
+  const problem = flags.some(isProblem)
+  const notice = !problem && flags.length > 0
   await orca.host.call('statusBar.update', {
     id: FOCUSED_ITEM,
     text: `sc-${item.id} · ${item.state}`,
-    icon: problems.length > 0 ? 'warning' : 'branch',
-    tone: problems.length > 0 ? 'warning' : 'neutral',
-    tooltip: [item.name, ...problems.map((flag) => FLAG_TEXT[flag])].join('\n'),
+    icon: problem ? 'warning' : notice ? 'flag' : 'branch',
+    tone: problem ? 'warning' : notice ? 'accent' : 'neutral',
+    tooltip: [item.name, ...flags.map((flag) => FLAG_TEXT[flag])].join('\n'),
     visible: true
   })
 }

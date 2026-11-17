@@ -68,6 +68,7 @@ export function indexWorktrees(workspaces: readonly ListedWorkspace[]): Map<numb
 /** States a sub-task is being worked on in; its worktree should exist. */
 const IN_PROGRESS = 'started'
 const DONE = 'done'
+const BACKLOG = 'backlog'
 
 /** What is off about a story and its worktrees, as the list shows it. */
 export function storyFlags(item: Omit<StoryItem, 'flags'>): WorktreeFlag[] {
@@ -84,9 +85,20 @@ export function storyFlags(item: Omit<StoryItem, 'flags'>): WorktreeFlag[] {
   }
   if ((item.stateType === DONE || item.archived) && item.worktrees.length > 0) {
     flags.push('stale')
+  } else if (item.stateType === BACKLOG && item.worktrees.length > 0) {
+    flags.push('not-started')
   }
   return flags
 }
+
+/**
+ * Flags that are a heads-up rather than a problem: Shortcut is behind the work, not wrong.
+ * They show with their own icon and tone.
+ */
+export const NOTICE_FLAGS: readonly WorktreeFlag[] = ['not-started']
+
+/** Whether a flag is a problem (amber warning) rather than a heads-up (accent flag). */
+export const isProblem = (flag: WorktreeFlag): boolean => !NOTICE_FLAGS.includes(flag)
 
 /**
  * The Worktrees tab: each linked worktree with its story (null when Shortcut no longer has it)
@@ -125,5 +137,6 @@ export const FLAG_TEXT: Record<WorktreeFlag, string> = {
   duplicate: 'More than one worktree has this story’s branch.',
   'on-story': 'The worktree is on a story; work belongs on its sub-tasks.',
   stale: 'The story is done or archived: the worktree can go.',
-  'missing-story': 'Shortcut has no such story, or this token cannot see it.'
+  'missing-story': 'Shortcut has no such story, or this token cannot see it.',
+  'not-started': 'Has a worktree but is still in a backlog state: move it along in Shortcut.'
 }

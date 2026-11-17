@@ -13,7 +13,7 @@ import {
 } from 'orca'
 import type { LinkedWorktree } from './protocol'
 import { keyOf, openWorktree, worktrees, worktreesError } from './state'
-import { FLAG_TEXT } from './worktree-links'
+import { FLAG_TEXT, isProblem } from './worktree-links'
 
 const AGENT_TEXT: Record<string, string> = {
   working: 'agent working',
@@ -22,8 +22,11 @@ const AGENT_TEXT: Record<string, string> = {
 }
 
 function iconOf(worktree: LinkedWorktree): IconName {
-  if (worktree.flags.length > 0) {
+  if (worktree.flags.some(isProblem)) {
     return 'warning'
+  }
+  if (worktree.flags.length > 0) {
+    return 'flag'
   }
   return worktree.agent === 'working' || worktree.agent === 'permission' ? 'bot' : 'folder'
 }
@@ -48,7 +51,7 @@ function Row({ worktree }: { worktree: LinkedWorktree }) {
       onPress={() => void openWorktree(worktree.workspaceId)}
     >
       {worktree.flags.length > 0 ? (
-        <Text tone="warning" size="xs">
+        <Text tone={worktree.flags.some(isProblem) ? 'warning' : 'accent'} size="xs">
           {worktree.flags.map((flag) => FLAG_TEXT[flag]).join(' ')}
         </Text>
       ) : null}

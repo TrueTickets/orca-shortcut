@@ -324,3 +324,17 @@ test('a created or removed worktree reloads the list', async () => {
   assert.equal(calls, 2)
   await view.unmount()
 })
+
+test('a sub-task with a worktree but still in the backlog gets the flag icon, not the warning', async () => {
+  const early = storyItem(14, { name: 'Early work', parentId: 10, state: 'New', stateType: 'backlog', worktrees: [worktreeRef(14)], flags: ['not-started'] })
+  const withEarly: StoryList = {
+    ...linkedList,
+    groups: [{ ...linkedList.groups[0], subtasks: [...linkedList.groups[0].subtasks, early] }]
+  }
+  const view = await mount(panel, { host: linkedHost({ 'stories.list': withEarly }) })
+  const row = subtaskRows(view)[3]
+  assert.deepEqual([row.icon, row.description], ['flag', 'sc-14 · worktree · not started'])
+  await view.selectItem({ type: 'Tree' }, 'sc-14')
+  assert.ok(view.summary().some((line) => line.startsWith('Callout accent')))
+  await view.unmount()
+})

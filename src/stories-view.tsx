@@ -32,7 +32,7 @@ import {
   selected
 } from './state'
 import { describeFilter } from './story-tree'
-import { FLAG_TEXT } from './worktree-links'
+import { FLAG_TEXT, isProblem } from './worktree-links'
 
 const OWNER_OPTIONS: readonly { value: StoryOwner; label: string }[] = [
   { value: 'me', label: 'Me' },
@@ -58,8 +58,11 @@ function toggleState(state: string, checked: boolean): void {
 
 /** A row's icon: a problem first, then an agent at work, then a worktree, then the kind. */
 function iconOf(item: StoryItem): IconName {
-  if (item.flags.length > 0) {
+  if (item.flags.some(isProblem)) {
     return 'warning'
+  }
+  if (item.flags.length > 0) {
+    return 'flag'
   }
   if (item.worktrees.some((worktree) => worktree.agent === 'working')) {
     return 'bot'
@@ -82,6 +85,9 @@ function marksOf(item: StoryItem, focusedStoryId: number | null): string[] {
   }
   if (item.flags.includes('no-worktree')) {
     marks.push('no worktree')
+  }
+  if (item.flags.includes('not-started')) {
+    marks.push('not started')
   }
   if (item.flags.includes('duplicate')) {
     marks.push(`${item.worktrees.length} worktrees`)
@@ -175,7 +181,7 @@ function Detail({ story }: { story: StoryItem }) {
           {where}
         </Text>
         {story.flags.map((flag) => (
-          <Callout key={flag} tone="warning">
+          <Callout key={flag} tone={isProblem(flag) ? 'warning' : 'accent'} icon={isProblem(flag) ? 'warning' : 'flag'}>
             {FLAG_TEXT[flag]}
           </Callout>
         ))}

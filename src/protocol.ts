@@ -61,7 +61,14 @@ export type WorktreeRef = {
 }
 
 /** What is off between a story and its worktrees. */
-export type WorktreeFlag = 'no-worktree' | 'duplicate' | 'on-story' | 'stale' | 'missing-story'
+export type WorktreeFlag =
+  | 'no-worktree'
+  | 'duplicate'
+  | 'on-story'
+  | 'stale'
+  | 'missing-story'
+  /** Has a worktree while still in a backlog state: work began before Shortcut says so. */
+  | 'not-started'
 
 export type StoryItem = {
   id: number

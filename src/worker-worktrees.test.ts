@@ -194,3 +194,22 @@ test('tells panels when worktrees come and go, and opens one on request', async 
   assert.deepEqual(h.callsOf('workspace.open'), [{ workspaceId: 'w1' }])
   await worker.deactivate()
 })
+
+test('the status bar flags, in accent, a focused worktree whose story is still in the backlog', async () => {
+  const backlog = [{ ...WORKFLOWS[0], states: [...WORKFLOWS[0].states, { id: 100, name: 'New', type: 'backlog', position: 0 }] }]
+  fakeShortcut({ 11: raw(11, { name: 'Early work', workflow_state_id: 100 }) })
+  const inner = main.deps.fetch
+  main.deps.fetch = (async (url, init) =>
+    new URL(url).pathname.endsWith('/workflows')
+      ? { ok: true, status: 200, json: async () => backlog, text: async () => '' }
+      : inner(url, init)) as FetchLike
+  const h = host()
+  const worker = await mountWorker(main, { host: h, events: workspaceEvents })
+  await worker.emit('workspace.changed', {
+    context: { branch: 'ada/sc-11/drift', displayName: 'drift', terminals: [] }
+  })
+  const update = h.callsOf('statusBar.update').at(-1) as Record<string, unknown>
+  assert.deepEqual([update.text, update.icon, update.tone], ['sc-11 · New', 'flag', 'accent'])
+  assert.match(String(update.tooltip), /backlog/)
+  await worker.deactivate()
+})

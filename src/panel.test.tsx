@@ -312,7 +312,7 @@ const linkedList: StoryList = {
 }
 const linkedWorktrees: WorktreeList = {
   worktrees: [
-    { ...worktreeRef(9, { name: 'old' }), storyId: 9, story: storyItem(9, { state: 'Complete', stateType: 'done' }), focused: false, flags: ['stale'] },
+    { ...worktreeRef(9, { name: 'old' }), storyId: 9, story: storyItem(9, { state: 'Complete', stateType: 'done' }), focused: false, flags: ['done'] },
     { ...here, storyId: 11, story: linkedList.groups[0].subtasks[0], focused: true, flags: [] }
   ]
 }
@@ -381,11 +381,11 @@ test('the Worktrees tab lists story worktrees, problems first, and opens one', a
   assert.deepEqual(
     rows(view).map((row) => [row.title, row.current, row.pills]),
     [
-      ['Story 9', false, ['success:Complete', 'danger:stale']],
+      ['Story 9', false, ['success:Complete', 'neutral:clean up']],
       ['Focused work', true, ['warning:Ready']]
     ]
   )
-  assert.ok(view.find({ text: 'The story is done or archived: the worktree can go.' }))
+  assert.ok(view.find({ text: /^Done in Shortcut\. Remove the worktree/ }))
   await view.press({ type: 'ListItem', text: /Story 9/ })
   assert.deepEqual(sent, [{ workspaceId: 'ws-9' }])
   await view.unmount()

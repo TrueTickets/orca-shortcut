@@ -74,26 +74,33 @@ test('flags in-progress sub-tasks without a worktree', () => {
   assert.deepEqual(flagsOf({ parentId: null, stateType: 'started' }), [])
 })
 
-test('flags duplicate worktrees, worktrees on stories, and stale worktrees', () => {
+test('flags duplicate worktrees, worktrees on stories, and worktrees of finished work', () => {
   assert.deepEqual(
     flagsOf({ parentId: 9, stateType: 'started', worktrees: [worktreeRef(1), worktreeRef(1, { workspaceId: 'x' })] }),
     ['duplicate']
   )
   assert.deepEqual(flagsOf({ parentId: null, worktrees: [worktreeRef(1)] }), ['on-story'])
-  assert.deepEqual(flagsOf({ parentId: 9, stateType: 'done', worktrees: [worktreeRef(1)] }), ['stale'])
+  assert.deepEqual(flagsOf({ parentId: 9, stateType: 'done', worktrees: [worktreeRef(1)] }), ['done'])
   assert.deepEqual(flagsOf({ parentId: 9, archived: true, worktrees: [worktreeRef(1)] }), ['stale'])
+  // Archived wins over done.
+  assert.deepEqual(
+    flagsOf({ parentId: 9, stateType: 'done', archived: true, worktrees: [worktreeRef(1)] }),
+    ['stale']
+  )
   assert.deepEqual(flagsOf({ parentId: 9, stateType: 'started', worktrees: [worktreeRef(1)] }), [])
 })
 
-test('links worktrees to their stories: problems first, the focused one marked', () => {
+test('links worktrees to their stories: problems, then notices, the focused one marked', () => {
   const index = new Map([
+    [4, [worktreeRef(4)]],
     [5, [worktreeRef(5)]],
     [6, [worktreeRef(6)]],
     [7, [worktreeRef(7)]]
   ])
   const stories = new Map([
+    [4, storyItem(4, { parentId: 1, archived: true, worktrees: index.get(4), flags: ['stale'] })],
     [5, storyItem(5, { parentId: 1, stateType: 'started', worktrees: index.get(5) })],
-    [6, storyItem(6, { parentId: 1, stateType: 'done', worktrees: index.get(6), flags: ['stale'] })]
+    [6, storyItem(6, { parentId: 1, stateType: 'done', worktrees: index.get(6), flags: ['done'] })]
     // Story 7: Shortcut did not return it.
   ])
   const linked = linkWorktrees(index, stories, 'refs/heads/ada/sc-5/work')
@@ -101,7 +108,8 @@ test('links worktrees to their stories: problems first, the focused one marked',
     linked.map((worktree) => [worktree.storyId, worktree.flags, worktree.focused]),
     [
       [7, ['missing-story'], false],
-      [6, ['stale'], false],
+      [4, ['stale'], false],
+      [6, ['done'], false],
       [5, [], true]
     ]
   )
@@ -119,6 +127,7 @@ test('a worktree on work still in the backlog is a heads-up, not a problem', () 
   const flags = flagsOf({ parentId: 9, stateType: 'backlog', worktrees: [worktreeRef(1)] })
   assert.deepEqual(flags, ['not-started'])
   assert.equal(isProblem('not-started'), false)
+  assert.equal(isProblem('done'), false)
   assert.equal(isProblem('stale'), true)
   // Ready work with a worktree is about to start: no flag. Done wins over backlog.
   assert.deepEqual(flagsOf({ parentId: 9, stateType: 'unstarted', worktrees: [worktreeRef(1)] }), [])

@@ -92,6 +92,8 @@ export type WorktreeFlag =
   | 'missing-story'
   /** Has a worktree while still in a backlog state: work began before Shortcut says so. */
   | 'not-started'
+  /** Done in Shortcut and the worktree is still there: it can go once finished with. */
+  | 'done'
 
 export type StoryItem = {
   id: number

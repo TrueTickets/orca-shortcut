@@ -62,7 +62,11 @@ and nothing is stored that could go stale.
 - Flagged: a sub-task in progress without a worktree,
   more than one worktree for a story,
   a worktree on a story instead of a sub-task,
-  and a worktree whose story is done or archived.
+  and a worktree whose story is archived.
+- Noted, more quietly (a blue flag, not a warning):
+  a worktree on work still in the backlog,
+  and a worktree whose story is done, as a reminder to remove it
+  from Orca's sidebar once you are finished with it.
 
 ## Starting work
 

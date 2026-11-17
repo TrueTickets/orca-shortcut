@@ -94,7 +94,7 @@ test('lists every story worktree with its story now, problems first', async () =
     worktrees.map((worktree) => [worktree.storyId, worktree.name, worktree.flags, worktree.agent]),
     [
       [13, 'gone', ['missing-story'], null],
-      [12, 'old', ['stale'], null],
+      [12, 'old', ['done'], null],
       [11, 'drift', [], 'working']
     ]
   )
@@ -156,7 +156,7 @@ test('the focused worktree names its story in the status bar and tells panels', 
   await worker.deactivate()
 })
 
-test('the status bar warns about a focused worktree whose story is done', async () => {
+test('the status bar notes, without warning, a focused worktree whose story is done', async () => {
   fakeShortcut({ 12: raw(12, { name: 'Old work', workflow_state_id: 104 }) })
   const h = host()
   const worker = await mountWorker(main, { host: h, events: workspaceEvents })
@@ -164,9 +164,9 @@ test('the status bar warns about a focused worktree whose story is done', async 
     context: { branch: 'ada/sc-12/old', displayName: 'old', terminals: [] }
   })
   const update = h.callsOf('statusBar.update').at(-1) as Record<string, unknown>
-  assert.equal(update.tone, 'warning')
-  assert.equal(update.icon, 'warning')
-  assert.match(String(update.tooltip), /done or archived/)
+  assert.equal(update.tone, 'accent')
+  assert.equal(update.icon, 'flag')
+  assert.match(String(update.tooltip), /Done in Shortcut/)
   await worker.deactivate()
 })
 

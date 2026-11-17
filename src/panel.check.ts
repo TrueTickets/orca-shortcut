@@ -59,7 +59,7 @@ const worktrees: WorktreeList = {
       storyId: 150,
       story: storyItem(150, { name: 'Print the old tables', state: 'Complete', stateType: 'done' }),
       focused: false,
-      flags: ['stale']
+      flags: ['done']
     },
     {
       ...focusedRef,

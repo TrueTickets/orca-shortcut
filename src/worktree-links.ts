@@ -85,8 +85,10 @@ export function storyFlags(item: Omit<StoryItem, 'flags' | 'nextStates'>): Workt
   if (!isSubtask && item.worktrees.length > 0) {
     flags.push('on-story')
   }
-  if ((item.stateType === DONE || item.archived) && item.worktrees.length > 0) {
+  if (item.archived && item.worktrees.length > 0) {
     flags.push('stale')
+  } else if (item.stateType === DONE && item.worktrees.length > 0) {
+    flags.push('done')
   } else if (item.stateType === BACKLOG && item.worktrees.length > 0) {
     flags.push('not-started')
   }
@@ -97,7 +99,7 @@ export function storyFlags(item: Omit<StoryItem, 'flags' | 'nextStates'>): Workt
  * Flags that are a heads-up rather than a problem: Shortcut is behind the work, not wrong.
  * They show with their own icon and tone.
  */
-export const NOTICE_FLAGS: readonly WorktreeFlag[] = ['not-started']
+export const NOTICE_FLAGS: readonly WorktreeFlag[] = ['not-started', 'done']
 
 /** Whether a flag is a problem (amber warning) rather than a heads-up (accent flag). */
 export const isProblem = (flag: WorktreeFlag): boolean => !NOTICE_FLAGS.includes(flag)
@@ -127,10 +129,10 @@ export function linkWorktrees(
       })
     }
   }
-  // Problems first, then newest story first.
-  return linked.sort(
-    (a, b) => Number(b.flags.length > 0) - Number(a.flags.length > 0) || b.storyId - a.storyId
-  )
+  // Problems first, then notices, then newest story first.
+  const rank = (worktree: LinkedWorktree) =>
+    worktree.flags.some(isProblem) ? 2 : worktree.flags.length > 0 ? 1 : 0
+  return linked.sort((a, b) => rank(b) - rank(a) || b.storyId - a.storyId)
 }
 
 /** One line per flag, for the detail card and the Worktrees tab. */
@@ -138,9 +140,10 @@ export const FLAG_TEXT: Record<WorktreeFlag, string> = {
   'no-worktree': 'In progress without a worktree.',
   duplicate: 'More than one worktree has this story’s branch.',
   'on-story': 'The worktree is on a story; work belongs on its sub-tasks.',
-  stale: 'The story is done or archived: the worktree can go.',
+  stale: 'The story is archived: the worktree can go.',
   'missing-story': 'Shortcut has no such story, or this token cannot see it.',
-  'not-started': 'Has a worktree but is still in a backlog state: move it along in Shortcut.'
+  'not-started': 'Has a worktree but is still in a backlog state: move it along in Shortcut.',
+  done: 'Done in Shortcut. Remove the worktree from Orca’s sidebar once you are finished with it.'
 }
 
 /** Short pill text for each flag; the card spells it out. */
@@ -150,5 +153,6 @@ export const FLAG_PILL: Record<WorktreeFlag, string> = {
   'on-story': 'on story',
   stale: 'stale',
   'missing-story': 'missing',
-  'not-started': 'not started'
+  'not-started': 'not started',
+  done: 'clean up'
 }

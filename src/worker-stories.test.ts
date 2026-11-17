@@ -56,6 +56,9 @@ function fakeShortcut(routes: Routes): string[] {
     if (path === '/workflows') {
       return answer(200, WORKFLOWS)
     }
+    if (path === '/member') {
+      return answer(200, { id: 'member-1', name: 'Ada', mention_name: 'ada', workspace2: { name: 'Engines' } })
+    }
     if (path === '/search/stories') {
       const query = parsed.searchParams.get('query') ?? ''
       const pages = routes.search[query]
@@ -236,5 +239,26 @@ test('a story id fetches that story; an unknown or archived one finds nothing', 
   assert.deepEqual((await worker.request('stories.search', { query: 'sc-99' })).groups, [])
   assert.deepEqual((await worker.request('stories.search', { query: '22' })).groups, [])
   await assert.rejects(worker.request('stories.search', { query: '  ' }), /Type something to search for/)
+  await worker.deactivate()
+})
+
+test('with a filter, the search runs per state and owner, and an id must pass it too', async () => {
+  const asked = fakeShortcut({
+    search: {
+      'engine owner:ada state:"Ready" !is:archived': [[raw(31)]],
+      'engine owner:ada state:"In Development (Sub-tasks)" !is:archived': [[raw(32, { workflow_state_id: 103 })]]
+    },
+    stories: { 31: raw(31), 33: raw(33, { workflow_state_id: 104 }) }
+  })
+  const worker = await mountWorker(main, { host: mockHost(connected) })
+  const filter = { states: ['Ready', 'In Development (Sub-tasks)'], owner: 'me' as const }
+  const found = await worker.request('stories.search', { query: 'engine', filter })
+  assert.deepEqual(found.filter, filter)
+  assert.deepEqual(found.groups.map((group) => group.story.id).sort(), [31, 32])
+  assert.ok(!asked.some((url) => new URL(url).searchParams.get('query') === 'engine !is:archived'))
+
+  // By id: 31 is mine and Ready; 33 is Complete, which the filter leaves out.
+  assert.deepEqual((await worker.request('stories.search', { query: 'sc-31', filter })).groups.length, 1)
+  assert.deepEqual((await worker.request('stories.search', { query: 'sc-33', filter })).groups, [])
   await worker.deactivate()
 })

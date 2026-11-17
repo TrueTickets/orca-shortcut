@@ -20,6 +20,7 @@ import {
   shell,
   Spinner,
   Stack,
+  Switch,
   Text,
   update,
   type IconName,
@@ -43,7 +44,9 @@ import {
   searching,
   searchResults,
   searchShortcut,
-  selected
+  searchWithFilters,
+  selected,
+  useFiltersInSearch
 } from './state'
 import { shortStateName, toneOfState } from './state-tone'
 import { CreateSubtask } from './create-subtask-view'
@@ -462,23 +465,29 @@ function ShortcutResults({ focusedStoryId }: { focusedStoryId: number | null }) 
     return null
   }
   const count = results.groups.reduce((total, group) => total + 1 + group.subtasks.length, 0)
+  const scope = results.filter ? describeFilter(results.filter) : 'All of Shortcut'
   return (
     <Stack gap="md">
       <Row justify="between">
         <Text size="xs" muted>
-          {`All of Shortcut · ${results.groups.length === 0 ? 'no' : count} match${count === 1 ? '' : 'es'}`}
+          {`${scope} · ${results.groups.length === 0 ? 'no' : count} match${count === 1 ? '' : 'es'}`}
         </Text>
         <Button variant="ghost" onPress={clearSearch}>
           Back to my list
         </Button>
       </Row>
+      <Switch label="Use my filters" checked={read(searchWithFilters)} onChange={useFiltersInSearch} />
       {results.truncated ? (
         <Callout tone="warning">Shortcut has more matches than shown: search for something narrower.</Callout>
       ) : null}
       {results.groups.length === 0 ? (
         <EmptyState
           title="No stories"
-          description={`Nothing in Shortcut matches "${results.query}".`}
+          description={
+            results.filter
+              ? `Nothing in Shortcut matches "${results.query}" with these filters.`
+              : `Nothing in Shortcut matches "${results.query}".`
+          }
           icon="search"
         />
       ) : (
@@ -508,6 +517,8 @@ export function StoriesView() {
     return (
       <Stack gap="md">
         {header}
+        {/* With the filter on, it can be changed here; a change searches again. */}
+        {read(searchWithFilters) ? <Filters current={current} /> : null}
         <ShortcutResults focusedStoryId={focusedStoryId} />
       </Stack>
     )

@@ -196,17 +196,35 @@ async function groupStories(
 /** A story id on its own, as `123` or `sc-123`. */
 const STORY_ID = /^\s*(?:sc-)?(\d+)\s*$/i
 
-/** Searches all of Shortcut; a bare story id fetches that story instead. */
+/** A story passes `filter` when it is in one of its states and owned as it says. */
+function passes(
+  story: ShortcutStory,
+  filter: StoryFilter,
+  stateNames: ReadonlyMap<number, string>,
+  memberId: string
+): boolean {
+  const owned =
+    filter.owner === 'anyone' ||
+    (filter.owner === 'unassigned' ? story.ownerIds.length === 0 : story.ownerIds.includes(memberId))
+  return owned && filter.states.includes(stateNames.get(story.workflowStateId) ?? '')
+}
+
+/**
+ * Searches all of Shortcut; a bare story id fetches that story instead. With `filter`, the
+ * search runs once per state, as the list does, since a Shortcut query takes a single state.
+ */
 async function searchStories(
   orca: OrcaWorkerApi,
   query: string,
+  requested: StoryFilter | undefined,
   signal: AbortSignal
 ): Promise<StorySearch> {
   const trimmed = query.trim()
   if (!trimmed) {
     throw codedError('invalid_params', 'Type something to search for.')
   }
-  const { client } = await connectedClient(orca)
+  const { client, mentionName } = await connectedClient(orca)
+  const filter = requested ? normalizeFilter(requested, await defaultFilter(orca)) : null
   const id = STORY_ID.exec(trimmed)?.[1]
   const found = id
     ? client.getStory(Number(id), signal).then(
@@ -219,14 +237,35 @@ async function searchStories(
           throw error
         }
       )
-    : client.searchStories(`${trimmed} !is:archived`, { maxPages: 2, signal })
-  const [{ stories, truncated }, workflowStates, worktrees] = await Promise.all([
+    : filter
+      ? Promise.all(
+          filter.states.map((state) =>
+            client.searchStories(`${trimmed} ${buildSearchQuery(state, filter.owner, mentionName)}`, {
+              maxPages: 2,
+              signal
+            })
+          )
+        ).then((searches) => ({
+          stories: searches.flatMap((search) => search.stories),
+          truncated: searches.some((search) => search.truncated)
+        }))
+      : client.searchStories(`${trimmed} !is:archived`, { maxPages: 2, signal })
+  const [searched, workflowStates, worktrees, member] = await Promise.all([
     found,
     client.listWorkflowStates(signal),
-    worktreeIndex(orca)
+    worktreeIndex(orca),
+    // Only an id lookup needs it, to hold the story to the filter.
+    id && filter?.owner === 'me' ? client.getCurrentMember(signal) : null
   ])
+  const { truncated } = searched
+  let stories = searched.stories
+  if (id && filter) {
+    const stateNames = new Map(workflowStates.map((state) => [state.id, state.name]))
+    stories = stories.filter((story) => passes(story, filter, stateNames, member?.id ?? ''))
+  }
   return {
     query: trimmed,
+    filter,
     groups: await groupStories(orca, client, stories, workflowStates, worktrees, signal),
     truncated
   }
@@ -312,8 +351,8 @@ export default function activate(orca: OrcaWorkerApi): void {
   orca.panels.handle('stories.list', (input, { signal }) =>
     listStories(orca, input?.filter, signal)
   )
-  orca.panels.handle('stories.search', ({ query }, { signal }) =>
-    searchStories(orca, query, signal)
+  orca.panels.handle('stories.search', ({ query, filter }, { signal }) =>
+    searchStories(orca, query, filter, signal)
   )
   orca.panels.handle('worktrees.list', (_input, { signal }) =>
     listWorktrees(orca, focus.branch, signal)

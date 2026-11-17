@@ -857,6 +857,7 @@ test('Enter searches all of Shortcut in place of the list, until cleared', async
         sent.push(input)
         return {
           query: input.query,
+          filter: null,
           truncated: false,
           groups: [{ story: storyItem(50, { name: 'Someone else’s engine', state: 'Complete', stateType: 'done' }), matched: true, subtasks: [] }]
         }
@@ -883,7 +884,7 @@ test('typing after a Shortcut search goes back to narrowing the list', async () 
     requests: {
       'auth.status': connected,
       'stories.list': searchable,
-      'stories.search': { query: 'engine', truncated: false, groups: [] }
+      'stories.search': { query: 'engine', filter: null, truncated: false, groups: [] }
     }
   })
   const view = await mount(panel, { host })
@@ -891,5 +892,36 @@ test('typing after a Shortcut search goes back to narrowing the list', async () 
   assert.equal(view.find({ type: 'EmptyState' })?.props?.description, 'Nothing in Shortcut matches "engine".')
   await view.type({ label: 'Search stories' }, 'punch', { replace: true })
   assert.deepEqual(titles(view), ['Parent story', 'Punch the cards'])
+  await view.unmount()
+})
+
+test('"Use my filters" searches Shortcut with the list filter, follows its changes, and is remembered', async () => {
+  const sent: { query: string; filter?: StoryFilter }[] = []
+  const host = mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': (input: { filter?: StoryFilter }) => ({ ...searchable, filter: input.filter ?? searchable.filter }),
+      'stories.search': (input: { query: string; filter?: StoryFilter }) => {
+        sent.push(input)
+        return { query: input.query, filter: input.filter ?? null, truncated: false, groups: [] }
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.type({ label: 'Search stories' }, 'engine', { submit: true })
+  assert.equal(view.find({ label: 'Filters' }), null)
+  await view.toggle({ label: 'Use my filters' })
+  assert.ok(view.find({ text: 'Ready · Mine · no matches' }))
+  assert.equal(view.find({ type: 'EmptyState' })?.props?.description, 'Nothing in Shortcut matches "engine" with these filters.')
+
+  // The filter shows above the results, and a change to it searches again.
+  await view.toggle({ label: 'Filters' })
+  await view.select({ label: 'Owner' }, 'anyone')
+  assert.deepEqual(sent, [
+    { query: 'engine' },
+    { query: 'engine', filter: { states: ['Ready'], owner: 'me' } },
+    { query: 'engine', filter: { states: ['Ready'], owner: 'anyone' } }
+  ])
+  assert.equal(view.persisted.plugin.searchFilters, true)
   await view.unmount()
 })

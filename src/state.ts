@@ -35,6 +35,8 @@ export const query = atom('')
 /** All of Shortcut searched for a query (on Enter); shown in place of the list until cleared. */
 export const searchResults = atom<StorySearch | null>(null)
 export const searching = atom(false)
+/** Whether Enter's search of all of Shortcut keeps to the list's filter; remembered. */
+export const searchWithFilters = atom('searchFilters', false, { persist: 'plugin' })
 export const searchError = atom<string | null>(null)
 
 export const worktrees = atom<WorktreeList | null>(null)
@@ -96,7 +98,8 @@ export async function searchShortcut(text: string): Promise<void> {
   set(searching, true)
   set(searchError, null)
   try {
-    const answer = await plugin.request('stories.search', { query: text })
+    const filter = read(searchWithFilters) ? read(chosenFilter) ?? read(list)?.filter : undefined
+    const answer = await plugin.request('stories.search', filter ? { query: text, filter } : { query: text })
     if (request === searchRequest) {
       set(searchResults, answer)
     }
@@ -119,6 +122,15 @@ export function changeQuery(text: string): void {
     ++searchRequest
     set(searchResults, null)
     set(searching, false)
+  }
+}
+
+/** Turns the filter on or off for Shortcut's results, and searches again. */
+export function useFiltersInSearch(on: boolean): void {
+  set(searchWithFilters, on)
+  const shown = read(searchResults)
+  if (shown) {
+    void searchShortcut(shown.query)
   }
 }
 

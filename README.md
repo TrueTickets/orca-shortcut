@@ -47,8 +47,12 @@ Press Enter to search all of Shortcut instead, whatever the state or owner
 The query is Shortcut's own search syntax,
 so quote a phrase (`"print the tables"`) to match it whole;
 a bare id fetches that story.
-Shortcut's results replace the list, without the filters,
+Shortcut's results replace the list
 until you clear the search, change it, or press **Back to my list**.
+They ignore the filters unless you turn on **Use my filters** (remembered):
+then only stories the list's owner and states allow are found,
+the filters show above the results,
+and changing them searches again.
 
 ## Worktrees
 

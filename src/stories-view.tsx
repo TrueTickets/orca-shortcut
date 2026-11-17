@@ -38,6 +38,7 @@ import {
 } from './state'
 import { shortStateName, toneOfState } from './state-tone'
 import { CreateSubtask } from './create-subtask-view'
+import { MoveState } from './move-state-view'
 import { prepareStartWork, StartWork } from './start-work-view'
 import { describeFilter } from './story-tree'
 import { FLAG_PILL, FLAG_TEXT, isProblem } from './worktree-links'
@@ -393,6 +394,7 @@ function StoryDetails({ story }: { story: StoryItem }) {
         ) : (
           <CreateSubtask story={story} />
         )}
+        <MoveState story={story} />
         <Row>
           <Button
             variant="ghost"

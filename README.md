@@ -99,6 +99,17 @@ with you as its owner and the story's team and type,
 then opens with Start work ready.
 Sub-tasks of sub-tasks are refused.
 
+## Moving state
+
+A story's or sub-task's details offer the states it can move to:
+the later states of its workflow,
+leaving out those named for the other kind
+(a sub-task is never offered a "(Stories)" state, nor a story a "(Sub-tasks)" one).
+Pick one and press **Move**;
+a done state asks first, since the story then leaves lists of work in progress.
+The plugin only moves things forward.
+To move one back, use **Open in Shortcut**.
+
 ## Token
 
 The API token is checked against Shortcut before it is saved,

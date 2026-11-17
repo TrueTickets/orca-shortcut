@@ -715,3 +715,95 @@ test('a story folded in an earlier run starts folded', async () => {
   assert.ok(view.find({ type: 'IconButton', label: 'Show sub-tasks of sc-10' }))
   await view.unmount()
 })
+
+// ---- Moving state ----
+
+/** The list, with sub-task 11 able to move on to In Development or Complete. */
+const movable: StoryList = {
+  ...list,
+  groups: [
+    list.groups[0],
+    {
+      ...list.groups[1],
+      subtasks: [
+        storyItem(11, {
+          name: 'First sub-task',
+          parentId: 10,
+          nextStates: [
+            { id: 104, name: 'In Development (Sub-tasks)', type: 'started' },
+            { id: 108, name: 'Complete', type: 'done' }
+          ]
+        })
+      ]
+    }
+  ]
+}
+
+function moveHost(sent: unknown[], loads: { count: number }) {
+  return mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': () => (loads.count++, movable),
+      'work.options': workOptions,
+      'story.move': (input: { storyId: number; stateId: number }) => {
+        sent.push(input)
+        return input.stateId === 108
+          ? { id: 11, state: 'Complete', stateType: 'done' }
+          : { id: 11, state: 'In Development (Sub-tasks)', stateType: 'started' }
+      }
+    }
+  })
+}
+
+test('moves a sub-task forward from its details, then reloads the list', async () => {
+  const sent: unknown[] = []
+  const loads = { count: 0 }
+  const view = await mount(panel, { host: moveHost(sent, loads) })
+  await view.press({ type: 'ListItem', text: /First sub-task/ })
+  assert.equal(view.find({ type: 'Button', text: 'Move' })?.props?.disabled, true)
+  await view.select({ label: 'Move to' }, '104')
+  await view.press({ type: 'Button', text: 'Move' })
+  assert.deepEqual(sent, [{ storyId: 11, stateId: 104 }])
+  assert.equal(loads.count, 2)
+  assert.ok(view.find({ text: 'Moved sc-11 to In Development (Sub-tasks).' }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('a done state asks first, and Cancel moves nothing', async () => {
+  const sent: unknown[] = []
+  const view = await mount(panel, { host: moveHost(sent, { count: 0 }) })
+  await view.press({ type: 'ListItem', text: /First sub-task/ })
+  await view.select({ label: 'Move to' }, '108')
+  await view.press({ type: 'Button', text: 'Move' })
+  assert.deepEqual(sent, [])
+  assert.match(words(nodes(view).find((node) => node.type === 'Callout')), /Move sc-11 to Complete\?/)
+  await view.press({ type: 'Button', text: 'Cancel' })
+  assert.equal(view.find({ type: 'Button', text: 'Move to Complete' }), null)
+
+  await view.press({ type: 'Button', text: 'Move' })
+  await view.press({ type: 'Button', text: 'Move to Complete' })
+  assert.deepEqual(sent, [{ storyId: 11, stateId: 108 }])
+  await view.unmount()
+})
+
+test('offers no picker without later states, and says why a move failed', async () => {
+  const host = mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': movable,
+      'work.options': workOptions,
+      'story.move': () => {
+        throw hostError('invalid_params', 'sc-11 can only move forward from Complete here; move it to Ready in Shortcut.')
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.press({ type: 'ListItem', text: /Lone story/ })
+  assert.equal(view.find({ label: 'Move to' }), null)
+  await view.press({ type: 'ListItem', text: /First sub-task/ })
+  await view.select({ label: 'Move to' }, '104')
+  await view.press({ type: 'Button', text: 'Move' })
+  assert.ok(view.find({ text: /can only move forward from Complete/ }))
+  await view.unmount()
+})

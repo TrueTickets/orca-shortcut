@@ -3,6 +3,13 @@
 import { defineCheck } from 'orca/testing'
 
 export default defineCheck({
-  fresh: {},
-  counted: { storage: { total: 41 } }
+  disconnected: { results: { 'secrets.protection': { status: 'os-keyring' } } },
+  connected: {
+    results: { 'secrets.protection': { status: 'os-keyring' } },
+    secrets: { shortcutToken: 'tok' },
+    storage: {
+      member: { name: 'Ada Lovelace', mentionName: 'ada', workspaceName: 'Analytical Engines' }
+    }
+  },
+  noKeyStore: { results: { 'secrets.protection': { status: 'unavailable' } } }
 })

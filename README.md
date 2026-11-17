@@ -1,14 +1,45 @@
-# Shortcut
+# Shortcut for Orca
 
-A right-sidebar panel (`src/panel.tsx`) and the plugin's own worker (`src/worker.ts`). The panel asks with `plugin.request`, the worker answers with `orca.panels.handle`, keeps the total in `orca.storage` and tells every open panel with `orca.panels.post`; `src/protocol.ts` types both sides. Orca transpiles both files when they load, so there is no build step: save and the panel or worker reloads (a worker reload drops its in-memory state, so keep what must last in storage). `orca plugin test .` runs `src/panel.test.tsx` and `src/worker.test.ts` in Node with `orca/testing`, and `orca plugin check .` renders the panel with the worker in each `src/panel.check.ts` scenario; `npx tsc -p .` type-checks against the typings `orca plugin types .` writes to `.orca/types/`. With the folder loaded, `orca plugin dev request . counter.add --data '{"by":1}'` calls the worker as the panel does.
+An [Orca](https://github.com/stablyai/orca) plugin that brings
+[Shortcut](https://www.shortcut.com) stories and sub-tasks into Orca.
+
+> Work in progress.
+> Today it connects to Shortcut with an API token.
+> Browsing stories and starting worktrees from sub-tasks are next.
+
+## How it works
+
+Orca does not yet let plugins register as task providers
+(the `taskSources` contribution point is reserved),
+so this plugin is a sidebar panel with its own worker:
+
+- `src/panel.tsx` is the panel, drawn with Orca's own components.
+  Panel frames have no network access.
+- `src/worker.ts` is the plugin's worker.
+  It is the only part that talks to Shortcut
+  and the only part that sees the API token.
+- `src/shortcut-api.ts` is a small Shortcut REST v3 client.
+- `src/protocol.ts` types every panel ↔ worker request.
+
+The API token is checked against Shortcut before it is saved,
+and is stored in the plugin's encrypted secrets (the OS key store).
+On a machine without an OS key store, the plugin refuses to save it.
+
+The plugin runs as a `trusted-worker`:
+the worker is a Node.js process with your user account's access,
+which it needs to reach the Shortcut API.
 
 ## Develop
 
+Needs Orca 1.4.246 or later.
+
 ```sh
 orca plugin validate .
-orca plugin dev watch .    # loads this folder into Orca and prints its logs and reloads; Ctrl-C unloads it
+orca plugin test .        # src/*.test.ts(x), in Node with orca/testing
+orca plugin check .       # renders the panel in each src/panel.check.ts scenario
+orca plugin types .       # writes the typings to .orca/types (git-ignored)
+npx tsc -p .              # type check
+orca plugin dev watch .   # loads this folder into Orca and streams its logs; Ctrl-C unloads it
 ```
 
-Orca names the publisher after where the plugin is installed from: the GitHub or GitLab owner of
-its repository, or `local` for a folder. See
-https://github.com/stablyai/orca/blob/main/docs/reference/plugin-authoring.md.
+There is no build step: Orca transpiles the TypeScript when it loads.

@@ -3,13 +3,23 @@ export {}
 
 declare module 'orca' {
   interface PluginRequests {
-    /** The total the worker keeps in storage. */
-    'counter.get': { output: { total: number } }
-    /** Adds `by` to the stored total and answers the new total. */
-    'counter.add': { input: { by: number }; output: { total: number } }
+    /** Whether a token is stored and whom it belongs to. Never returns the token. */
+    'auth.status': { output: AuthStatus }
+    /** Checks `token` against Shortcut, then stores it in the plugin's encrypted secrets. */
+    'auth.connect': { input: { token: string }; output: AuthStatus }
+    /** Forgets the stored token. */
+    'auth.disconnect': { output: AuthStatus }
   }
   interface PluginPanelEvents {
-    /** Posted to every open panel after the total changes. */
-    'counter.changed': { total: number }
+    /** Posted to every open panel after connecting or disconnecting. */
+    'auth.changed': AuthStatus
   }
 }
+
+export type AuthStatus =
+  | { connected: false; secretsAvailable: boolean }
+  | {
+      connected: true
+      secretsAvailable: true
+      member: { name: string; mentionName: string; workspaceName: string }
+    }

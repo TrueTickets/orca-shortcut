@@ -3,7 +3,7 @@
   "id": "shortcut",
   "name": "Shortcut",
   "version": "0.1.0",
-  "description": "A sidebar panel and the worker that answers it.",
+  "description": "Shortcut stories and sub-tasks in Orca: browse your work, start worktrees from sub-tasks and keep Shortcut in step.",
   "engines": {
     "orca": ">=1.4.246"
   },
@@ -15,7 +15,7 @@
       {
         "id": "shortcut",
         "title": "Shortcut",
-        "icon": "blocks",
+        "icon": "layers",
         "entry": "src/panel.tsx",
         "ui": "components"
       }
@@ -24,6 +24,9 @@
   "capabilities": [
     {
       "kind": "storage:own"
+    },
+    {
+      "kind": "secrets:own"
     }
   ]
 }

@@ -1,7 +1,7 @@
-// Starting work from the selected sub-task's card: a first press asks the worker what it would
-// do (project, branch, agents), a second does it. Creating a worktree runs the project's setup,
-// so it is never one accidental click.
-import { atom, Button, Callout, plugin, read, Select, set, Stack, Text } from 'orca'
+// Starting work from a sub-task's details: opening them asks the worker what it would do
+// (project, branch, agents), and Start work does it. Creating a worktree runs the project's
+// setup, so it happens only on that press, with the choices in view.
+import { atom, Button, Callout, plugin, read, Select, set, Spinner, Stack, Text } from 'orca'
 import type { StartResult, StoryItem, WorkOptions } from './protocol'
 import { loadStories, messageOf } from './state'
 
@@ -16,7 +16,11 @@ const starting = atom(false)
 const outcome = atom<(StartResult & { storyId: number }) | null>(null)
 const problem = atom<{ storyId: number; message: string } | null>(null)
 
-async function loadOptions(storyId: number): Promise<void> {
+/** Asks the worker what starting work on `storyId` would do; read-only. */
+export async function prepareStartWork(storyId: number): Promise<void> {
+  if (read(options)?.storyId === storyId || read(loadingOptions) === storyId) {
+    return
+  }
   set(loadingOptions, storyId)
   set(problem, null)
   try {
@@ -83,15 +87,15 @@ export function StartWork({ story }: { story: StoryItem }) {
     return <Outcome result={done} />
   }
   if (offered?.storyId !== story.id) {
+    if (read(loadingOptions) === story.id) {
+      return <Spinner label="Loading projects and agents" />
+    }
+    // Not loaded: it failed (shown above the button), or the details opened another way.
     return (
       <Stack gap="xs">
         {failure}
-        <Button
-          icon="play"
-          disabled={read(loadingOptions) === story.id}
-          onPress={() => void loadOptions(story.id)}
-        >
-          {read(loadingOptions) === story.id ? 'Checking…' : 'Start work…'}
+        <Button variant="ghost" icon="refresh" onPress={() => void prepareStartWork(story.id)}>
+          {failure ? 'Try again' : 'Load projects and agents'}
         </Button>
       </Stack>
     )

@@ -1,12 +1,11 @@
 // The Stories tab, laid out like Orca's left sidebar: each parent story as a plain header, its
-// sub-tasks as two-line rows under it, colour from small state pills. The selected item's card
-// is drawn by the panel, pinned under the list (see SelectedStory).
+// sub-tasks as two-line rows under it, colour from small state pills. Pressing a row opens its
+// details right under it, and pressing it again closes them.
 import {
   Badge,
   Box,
   Button,
   Callout,
-  Card,
   Checkbox,
   Collapsible,
   EmptyState,
@@ -35,7 +34,7 @@ import {
   selected
 } from './state'
 import { shortStateName, toneOfState } from './state-tone'
-import { StartWork } from './start-work-view'
+import { prepareStartWork, StartWork } from './start-work-view'
 import { describeFilter } from './story-tree'
 import { FLAG_PILL, FLAG_TEXT, isProblem } from './worktree-links'
 
@@ -148,7 +147,7 @@ function StoryRow({ item, focusedStoryId }: { item: StoryItem; focusedStoryId: n
     <ListItem
       icon={iconOf(item)}
       current={read(selected) === key}
-      onPress={() => set(selected, key)}
+      onPress={() => toggle(item)}
     >
       <RowText title={item.name} description={descriptionOf(item, focusedStoryId)}>
         <Pills item={item} />
@@ -157,16 +156,62 @@ function StoryRow({ item, focusedStoryId }: { item: StoryItem; focusedStoryId: n
   )
 }
 
+/**
+ * Selects a row, opening its details under it, or closes them when it was already selected. A
+ * sub-task that could start work asks the worker for its options at once, so the form is ready.
+ */
+function toggle(item: StoryItem): void {
+  const key = keyOf(item.id)
+  if (read(selected) === key) {
+    set(selected, null)
+    return
+  }
+  set(selected, key)
+  if (item.parentId !== null && item.worktrees.length === 0) {
+    void prepareStartWork(item.id)
+  }
+}
+
+/**
+ * Rows, with the selected one's details opened right under it. A List holds only rows and a row
+ * holds no buttons, so the list is split around the details.
+ */
+function Rows({
+  label,
+  items,
+  focusedStoryId
+}: {
+  label: string
+  items: readonly StoryItem[]
+  focusedStoryId: number | null
+}) {
+  const open = items.findIndex((item) => keyOf(item.id) === read(selected))
+  const list = (part: readonly StoryItem[], key: string) =>
+    part.length === 0 ? null : (
+      <List key={key} label={label}>
+        {part.map((item) => (
+          <StoryRow key={item.id} item={item} focusedStoryId={focusedStoryId} />
+        ))}
+      </List>
+    )
+  if (open < 0) {
+    return list(items, 'all')
+  }
+  return (
+    <Stack gap="xs">
+      {list(items.slice(0, open + 1), 'above')}
+      <StoryDetails story={items[open]} />
+      {list(items.slice(open + 1), 'below')}
+    </Stack>
+  )
+}
+
 /** A parent story as a header, like a project in Orca's left sidebar, with its sub-tasks under it. */
 function Group({ group, focusedStoryId }: { group: StoryGroup; focusedStoryId: number | null }) {
   const { story } = group
   if (group.subtasks.length === 0) {
     // A story that matched on its own: one row, like any other.
-    return (
-      <List label={story.name}>
-        <StoryRow item={story} focusedStoryId={focusedStoryId} />
-      </List>
-    )
+    return <Rows label={story.name} items={[story]} focusedStoryId={focusedStoryId} />
   }
   return (
     <Stack gap="xs">
@@ -176,11 +221,7 @@ function Group({ group, focusedStoryId }: { group: StoryGroup; focusedStoryId: n
         </Text>
         <StatePill item={story} />
       </Row>
-      <List label={story.name}>
-        {group.subtasks.map((subtask) => (
-          <StoryRow key={subtask.id} item={subtask} focusedStoryId={focusedStoryId} />
-        ))}
-      </List>
+      <Rows label={story.name} items={group.subtasks} focusedStoryId={focusedStoryId} />
     </Stack>
   )
 }
@@ -211,34 +252,18 @@ function Filters({ current }: { current: StoryList }) {
   )
 }
 
-export function findItem(groups: readonly StoryGroup[], key: string | null): StoryItem | null {
-  for (const group of groups) {
-    if (keyOf(group.story.id) === key) {
-      return group.story
-    }
-    const subtask = group.subtasks.find((candidate) => keyOf(candidate.id) === key)
-    if (subtask) {
-      return subtask
-    }
-  }
-  return null
-}
-
-/** The selected story's card, pinned under the list so it stays in view. */
-export function SelectedStory() {
-  const current = read(list)
-  const story = current ? findItem(current.groups, read(selected)) : null
-  if (!story) {
-    return null
-  }
+/** A selected row's details, opened right under it: what is off, its worktree or starting one. */
+function StoryDetails({ story }: { story: StoryItem }) {
   const where =
     story.parentId === null
       ? `Story · ${story.subTaskCount} sub-task${story.subTaskCount === 1 ? '' : 's'}`
       : `Sub-task of ${keyOf(story.parentId)}`
   return (
-    <Card title={story.name} description={`${keyOf(story.id)} · ${where}`}>
+    <Box key="story-details" border radius="md" padding="sm" background="muted">
       <Stack gap="sm">
-        <Pills item={story} />
+        <Text size="xs" muted>
+          {`${keyOf(story.id)} · ${where}`}
+        </Text>
         {story.flags.map((flag) => (
           <Callout
             key={flag}
@@ -279,7 +304,7 @@ export function SelectedStory() {
           </Button>
         </Row>
       </Stack>
-    </Card>
+    </Box>
   )
 }
 

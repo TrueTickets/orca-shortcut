@@ -62,8 +62,8 @@ and nothing is stored that could go stale.
 
 ## Starting work
 
-Select a sub-task without a worktree and press **Start work…**.
-The card offers a project
+Press a sub-task without a worktree to open its details under it.
+They offer a project
 (where the story's other sub-tasks have worktrees, else the last one used),
 an agent, and the branch it will use. **Start work** then:
 

@@ -35,7 +35,7 @@ import {
   worktreesLoading,
   type Tab as TabName
 } from './state'
-import { SelectedStory, StoriesView } from './stories-view'
+import { StoriesView } from './stories-view'
 import { WorktreesView } from './worktrees-view'
 
 async function connect(): Promise<void> {
@@ -154,7 +154,6 @@ export default function Panel() {
         </Tabs>
       </Box>
       <Box gap="sm" shrink={false}>
-        {read(tab) === 'stories' ? <SelectedStory /> : null}
         <Separator />
         <Row justify="between">
           <Text muted size="xs" truncate>

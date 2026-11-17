@@ -180,17 +180,27 @@ test('colours each row by its workflow state', async () => {
   await view.unmount()
 })
 
-test('selecting a row pins its card under the list, and opens it in Shortcut', async () => {
-  const host = mockHost({ requests: { 'auth.status': connected, 'stories.list': list } })
+test('pressing a row opens its details right under it, and a second press closes them', async () => {
+  const host = mockHost({
+    requests: { 'auth.status': connected, 'stories.list': list, 'work.options': workOptions }
+  })
   const view = await mount(panel, { host })
   await view.press({ type: 'ListItem', text: /First sub-task/ })
   assert.equal(rows(view)[1].current, true)
-  assert.equal(view.find({ type: 'Card' })?.label, 'First sub-task')
+  // The details follow the pressed row in the drawn tree, not the end of the list.
+  const tree = JSON.stringify(view.tree())
+  const details = tree.indexOf('sc-11 · Sub-task of sc-10')
+  assert.ok(details > tree.indexOf('First sub-task'))
+  assert.ok(details < tree.indexOf('@ada · Analytical Engines'))
   await view.press({ text: 'Open in Shortcut' })
   assert.deepEqual(host.callsOf('shell.openExternal'), [
     { url: 'https://app.shortcut.com/ws/story/11' }
   ])
   assert.deepEqual(view.refusals, [])
+
+  await view.press({ type: 'ListItem', text: /First sub-task/ })
+  assert.equal(rows(view)[1].current, false)
+  assert.equal(view.find({ text: 'Open in Shortcut' }), null)
   await view.unmount()
 })
 
@@ -434,11 +444,10 @@ test('starts work on a sub-task: options first, then the worktree', async () => 
     }
   })
   const view = await mount(panel, { host })
+  // Opening the sub-task asks for its options at once: the form is ready, with one button.
   await view.press({ type: 'ListItem', text: /First sub-task/ })
-  // Nothing is asked of the worker until the person presses.
-  assert.deepEqual(sent, [])
-  await view.press({ text: 'Start work…' })
   assert.deepEqual(sent, [{ name: 'work.options', input: { storyId: 11 } }])
+  assert.equal(view.findAll({ type: 'Button', text: /Start work/ }).length, 1)
 
   assert.equal(view.valueOf({ label: 'Project' }), 'p-engine')
   assert.equal(view.valueOf({ label: 'Agent' }), 'claude')
@@ -471,7 +480,6 @@ test('"No agent" starts work without one', async () => {
   })
   const view = await mount(panel, { host })
   await view.press({ type: 'ListItem', text: /First sub-task/ })
-  await view.press({ text: 'Start work…' })
   await view.select({ label: 'Agent' }, 'none')
   await view.press({ type: 'Button', text: 'Start work' })
   assert.deepEqual(started, { storyId: 11, projectId: 'p-engine', agent: null })
@@ -491,7 +499,6 @@ test('says why work could not start, and keeps the form', async () => {
   })
   const view = await mount(panel, { host })
   await view.press({ type: 'ListItem', text: /First sub-task/ })
-  await view.press({ text: 'Start work…' })
   await view.press({ type: 'Button', text: 'Start work' })
   assert.ok(view.find({ text: "this project's setup script needs a decision" }))
   assert.ok(view.find({ label: 'Project' }))
@@ -502,7 +509,7 @@ test('a story offers no worktree of its own', async () => {
   const host = mockHost({ requests: { 'auth.status': connected, 'stories.list': list } })
   const view = await mount(panel, { host })
   await view.press({ type: 'ListItem', text: /Lone story/ })
-  assert.equal(view.find({ text: 'Start work…' }), null)
+  assert.equal(view.find({ type: 'Button', text: 'Start work' }), null)
   assert.ok(view.find({ text: "Work starts on a story's sub-tasks." }))
   await view.unmount()
 })

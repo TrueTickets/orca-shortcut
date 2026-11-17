@@ -339,16 +339,22 @@ function Filters({ current }: { current: StoryList }) {
           options={OWNER_OPTIONS}
           onChange={(owner) => changeFilter((before) => ({ ...before, owner: owner as StoryOwner }))}
         />
-        {current.states
-          .filter((state) => state.type !== 'done')
-          .map((state) => (
-            <Checkbox
-              key={state.name}
-              label={state.name}
-              checked={filter.states.includes(state.name)}
-              onChange={(checked) => toggleState(state.name, checked)}
-            />
-          ))}
+        {/* Components have no fieldset, so the checkboxes get a heading like the Select's label. */}
+        <Stack gap="xs">
+          <Text size="sm" weight="medium">
+            States
+          </Text>
+          {current.states
+            .filter((state) => state.type !== 'done')
+            .map((state) => (
+              <Checkbox
+                key={state.name}
+                label={state.name}
+                checked={filter.states.includes(state.name)}
+                onChange={(checked) => toggleState(state.name, checked)}
+              />
+            ))}
+        </Stack>
       </Stack>
     </Collapsible>
   )

@@ -238,6 +238,8 @@ test('a filter change reloads with it, and is remembered', async () => {
   // Done states are not offered: the list is for work still to do.
   assert.equal(view.find({ label: 'Complete' }), null)
   await view.toggle({ label: 'Filters' })
+  // The checkboxes sit under a heading of their own, as the Select has its label.
+  assert.ok(view.find({ type: 'Text', text: 'States' }))
   await view.toggle({ label: 'In Development (Sub-tasks)' })
   await view.select({ label: 'Owner' }, 'anyone')
 

@@ -29,6 +29,7 @@ function story(id: number, fields: Partial<ShortcutStory> = {}): ShortcutStory {
     subTaskIds: [],
     ownerIds: [],
     description: '',
+    groupId: null,
     ...fields
   }
 }

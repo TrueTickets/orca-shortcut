@@ -90,6 +90,13 @@
           "No agent"
         ],
         "default": "claude"
+      },
+      {
+        "key": "newSubtaskState",
+        "title": "New sub-task state",
+        "description": "The workflow state a sub-task created from the panel starts in.",
+        "type": "string",
+        "default": "Ready"
       }
     ],
     "events": [

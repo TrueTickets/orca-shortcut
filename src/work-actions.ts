@@ -4,9 +4,9 @@
 import type { OrcaWorkerApi } from 'orca/worker'
 import { shortcutBranchName } from './branch-name'
 import { GitError, moveToBranch, type GitRunner } from './git-branch'
-import type { ProjectOption, StartResult, WorkOptions } from './protocol'
+import type { CreatedSubtask, ProjectOption, StartResult, WorkOptions } from './protocol'
 import { codedError, type ShortcutClient, type ShortcutStory } from './shortcut-api'
-import { buildAgentPrompt, planShortcutUpdates, suggestProject } from './start-work'
+import { buildAgentPrompt, planShortcutUpdates, stateNamed, suggestProject } from './start-work'
 import { indexWorktrees } from './worktree-links'
 
 /** Agents offered for a new worktree, by Orca's agent id. */
@@ -219,4 +219,54 @@ export async function startWork(
 
   orca.panels.post('worktrees.changed', null)
   return { workspaceId, branch, existing: false, done, warnings }
+}
+
+export async function createSubtask(
+  orca: OrcaWorkerApi,
+  ctx: WorkContext,
+  input: { parentId: number; name: string }
+): Promise<CreatedSubtask> {
+  const name = input.name.trim()
+  if (!name) {
+    throw codedError('invalid_params', 'Give the sub-task a title.')
+  }
+  if (name.length > 512) {
+    throw codedError('invalid_params', 'Shortcut takes titles of at most 512 characters.')
+  }
+  const parent = await ctx.client.getStory(input.parentId)
+  if (parent.parentStoryId !== null) {
+    throw codedError(
+      'invalid_params',
+      `sc-${parent.id} is itself a sub-task: add sub-tasks to its story, sc-${parent.parentStoryId}.`
+    )
+  }
+  const [states, member] = await Promise.all([
+    ctx.client.listWorkflowStates(),
+    ctx.client.getCurrentMember()
+  ])
+  const wanted = await setting(orca, 'newSubtaskState', 'Ready')
+  const warnings: string[] = []
+  // The named state in the story's workflow; else that workflow's first not-started state.
+  let state = stateNamed(wanted, parent, states)
+  if (!state) {
+    state = states
+      .filter((candidate) => candidate.workflowId === parent.workflowId && candidate.type === 'unstarted')
+      .sort((a, b) => a.position - b.position)[0]
+    if (!state) {
+      throw codedError('invalid_params', `No workflow state is named "${wanted}".`)
+    }
+    warnings.push(`No workflow state is named "${wanted}"; created it in ${state.name}.`)
+  }
+  const created = await ctx.client.createStory({
+    name,
+    workflowStateId: state.id,
+    parentStoryId: parent.id,
+    ownerIds: [member.id],
+    groupId: parent.groupId,
+    storyType: parent.storyType || undefined
+  })
+  if (created.parentStoryId !== parent.id) {
+    warnings.push(`Shortcut created sc-${created.id} but did not make it a sub-task of sc-${parent.id}.`)
+  }
+  return { id: created.id, name: created.name, state: state.name, warnings }
 }

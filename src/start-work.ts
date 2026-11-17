@@ -12,7 +12,7 @@ export type PlannedUpdate = { storyId: number; update: StoryUpdate; describe: st
 const NOT_STARTED = new Set(['backlog', 'unstarted'])
 
 /** The state with this name in the story's own workflow, else in any workflow. */
-function stateNamed(
+export function stateNamed(
   name: string,
   story: ShortcutStory,
   states: readonly ShortcutWorkflowState[]

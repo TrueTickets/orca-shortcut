@@ -26,6 +26,11 @@ declare module 'orca' {
      * Shortcut and, with `agent`, starts that agent on it.
      */
     'work.start': { input: { storyId: number; projectId: string; agent: string | null }; output: StartResult }
+    /**
+     * Creates a sub-task of story `parentId`, owned by the person, in the `newSubtaskState`
+     * workflow state, with the story's team and type.
+     */
+    'subtask.create': { input: { parentId: number; name: string }; output: CreatedSubtask }
     /** Shows a worktree in Orca, as clicking it in the sidebar does. */
     'worktrees.open': { input: { workspaceId: string }; output: null }
   }
@@ -145,5 +150,14 @@ export type StartResult = {
   /** What was done, one line each. */
   done: string[]
   /** What could not be done; the worktree exists either way. */
+  warnings: string[]
+}
+
+export type CreatedSubtask = {
+  id: number
+  name: string
+  /** The workflow state it was created in. */
+  state: string
+  /** What did not go as asked; the sub-task exists either way. */
   warnings: string[]
 }

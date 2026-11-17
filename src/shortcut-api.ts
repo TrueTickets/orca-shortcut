@@ -43,6 +43,8 @@ export type ShortcutStory = {
   ownerIds: string[]
   /** Markdown; empty in slim search results, which leave it out. */
   description: string
+  /** The team (Shortcut's `group_id`); null when it has none. */
+  groupId: string | null
 }
 
 export type ShortcutWorkflowState = {
@@ -55,6 +57,16 @@ export type ShortcutWorkflowState = {
 
 /** The story fields the plugin changes. */
 export type StoryUpdate = { workflowStateId?: number; ownerIds?: string[] }
+
+/** A new story; with `parentStoryId`, a sub-task of that story. */
+export type NewStory = {
+  name: string
+  workflowStateId: number
+  parentStoryId?: number
+  ownerIds?: string[]
+  groupId?: string | null
+  storyType?: string
+}
 
 export type StorySearchResult = {
   stories: ShortcutStory[]
@@ -75,6 +87,7 @@ export type ShortcutClient = {
   /** Every state of every workflow in the workspace. */
   listWorkflowStates(signal?: AbortSignal): Promise<ShortcutWorkflowState[]>
   updateStory(id: number, update: StoryUpdate, signal?: AbortSignal): Promise<ShortcutStory>
+  createStory(story: NewStory, signal?: AbortSignal): Promise<ShortcutStory>
 }
 
 type RawStory = {
@@ -89,6 +102,7 @@ type RawStory = {
   sub_task_story_ids?: unknown
   owner_ids?: unknown
   description?: unknown
+  group_id?: unknown
 }
 
 function toStory(raw: RawStory): ShortcutStory {
@@ -110,7 +124,8 @@ function toStory(raw: RawStory): ShortcutStory {
     ownerIds: Array.isArray(raw.owner_ids)
       ? raw.owner_ids.filter((id): id is string => typeof id === 'string')
       : [],
-    description: typeof raw.description === 'string' ? raw.description : ''
+    description: typeof raw.description === 'string' ? raw.description : '',
+    groupId: typeof raw.group_id === 'string' ? raw.group_id : null
   }
 }
 
@@ -231,6 +246,26 @@ export function createShortcutClient(token: string, fetchImpl: FetchLike): Short
         body.owner_ids = update.ownerIds
       }
       return toStory((await request('PUT', `/stories/${id}`, signal, body)) as RawStory)
+    },
+
+    async createStory(story, signal) {
+      const body: Record<string, unknown> = {
+        name: story.name,
+        workflow_state_id: story.workflowStateId
+      }
+      if (story.parentStoryId !== undefined) {
+        body.parent_story_id = story.parentStoryId
+      }
+      if (story.ownerIds !== undefined) {
+        body.owner_ids = story.ownerIds
+      }
+      if (story.groupId) {
+        body.group_id = story.groupId
+      }
+      if (story.storyType) {
+        body.story_type = story.storyType
+      }
+      return toStory((await request('POST', '/stories', signal, body)) as RawStory)
     }
   }
 }

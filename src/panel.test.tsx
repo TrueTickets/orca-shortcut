@@ -30,7 +30,7 @@ test('connects with a pasted token and shows who is connected', async () => {
   await view.press({ text: 'Connect' })
 
   assert.deepEqual(sent, ['tok-123'])
-  assert.ok(view.find({ text: 'Connected as @ada · Analytical Engines' }))
+  assert.ok(view.find({ text: '@ada · Analytical Engines' }))
   assert.equal(view.find({ label: 'Shortcut API token' }), null)
   assert.deepEqual(view.errors, [])
   assert.deepEqual(view.refusals, [])

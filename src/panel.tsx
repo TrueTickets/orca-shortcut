@@ -2,6 +2,7 @@
 // The panel never sees the API token after it is submitted: the worker checks and stores it,
 // and makes every Shortcut call.
 import {
+  Box,
   Button,
   Callout,
   Heading,
@@ -10,6 +11,7 @@ import {
   plugin,
   read,
   Row,
+  Separator,
   set,
   Spinner,
   Stack,
@@ -108,44 +110,58 @@ function ConnectForm({ secretsAvailable }: { secretsAvailable: boolean }) {
 export default function Panel() {
   const status = read(auth)
   const problem = read(error)
+  const header = (
+    <Row justify="between">
+      <Heading>Shortcut</Heading>
+      {status?.connected ? (
+        <IconButton
+          icon="refresh"
+          label="Refresh"
+          disabled={read(listLoading) || read(worktreesLoading)}
+          onPress={refresh}
+        />
+      ) : null}
+    </Row>
+  )
+  if (status === null || !status.connected) {
+    return (
+      <Stack gap="md">
+        {header}
+        {problem ? <Callout tone="danger">{problem}</Callout> : null}
+        {status === null ? (
+          problem ? null : <Spinner label="Loading" />
+        ) : (
+          <ConnectForm secretsAvailable={status.secretsAvailable} />
+        )}
+      </Stack>
+    )
+  }
+  // Like Orca's left sidebar: the list scrolls, and what follows it stays at the bottom.
   return (
-    <Stack gap="md">
-      <Row justify="between">
-        <Heading>Shortcut</Heading>
-        {status?.connected ? (
-          <IconButton
-            icon="refresh"
-            label="Refresh"
-            disabled={read(listLoading) || read(worktreesLoading)}
-            onPress={refresh}
-          />
-        ) : null}
-      </Row>
+    <Box height="100%" gap="md">
+      {header}
       {problem ? <Callout tone="danger">{problem}</Callout> : null}
-      {status === null ? (
-        problem ? null : <Spinner label="Loading" />
-      ) : status.connected ? (
-        <Stack gap="md">
-          <Tabs label="View" value={read(tab)} onChange={(value) => showTab(value as TabName)}>
-            <Tab value="stories" label="Stories" icon="book">
-              <StoriesView />
-            </Tab>
-            <Tab value="worktrees" label="Worktrees" icon="folder">
-              <WorktreesView />
-            </Tab>
-          </Tabs>
-          <Row justify="between">
-            <Text muted size="xs">
-              {`Connected as @${status.member.mentionName} · ${status.member.workspaceName}`}
-            </Text>
-            <Button variant="ghost" onPress={disconnect}>
-              Disconnect
-            </Button>
-          </Row>
-        </Stack>
-      ) : (
-        <ConnectForm secretsAvailable={status.secretsAvailable} />
-      )}
-    </Stack>
+      <Box grow scroll="y" minHeight={0}>
+        <Tabs label="View" value={read(tab)} onChange={(value) => showTab(value as TabName)}>
+          <Tab value="stories" label="Stories" icon="book">
+            <StoriesView />
+          </Tab>
+          <Tab value="worktrees" label="Worktrees" icon="folder">
+            <WorktreesView />
+          </Tab>
+        </Tabs>
+      </Box>
+      <Box gap="sm" shrink={false}>
+        <Separator />
+        <Row justify="between">
+          <Text muted size="xs" truncate>
+            {`@${status.member.mentionName} · ${status.member.workspaceName}`}
+          </Text>
+          <Button variant="ghost" size="sm" onPress={disconnect}>
+            Disconnect
+          </Button>
+        </Row>
+      </Box>
+    </Box>
   )
 }

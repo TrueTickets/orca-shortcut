@@ -391,7 +391,7 @@ test('a sub-task with a worktree but still in the backlog gets the flag, not the
   const row = rows(view)[3]
   assert.deepEqual([row.icon, row.description, row.pills], [
     'flag',
-    'sc-14 · sc-14-work',
+    'sc-14 · ada/sc-14/work',
     ['neutral:New', 'neutral:not started']
   ])
   await view.press({ type: 'ListItem', text: /Early work/ })
@@ -511,5 +511,50 @@ test('a story offers no worktree of its own', async () => {
   await view.press({ type: 'ListItem', text: /Lone story/ })
   assert.equal(view.find({ type: 'Button', text: 'Start work' }), null)
   assert.ok(view.find({ text: "Work starts on a story's sub-tasks." }))
+  await view.unmount()
+})
+
+// ---- Structure ----
+
+type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] }
+
+/** Every node of the drawn tree, outer ones included (findAll returns only the innermost match). */
+function nodes(view: View): Node[] {
+  const found: Node[] = []
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object') return
+    const el = node as Node
+    found.push(el)
+    for (const child of el.children ?? []) walk(child)
+  }
+  walk(view.tree())
+  return found
+}
+
+/** The words under a node, as a person reads them. */
+function words(node: unknown): string {
+  if (typeof node === 'string') return node
+  const el = node as Node
+  return (el?.children ?? []).map(words).join(' ')
+}
+
+test('each story is its own card, and the selected row shares an accent frame with its details', async () => {
+  const host = mockHost({
+    requests: { 'auth.status': connected, 'stories.list': list, 'work.options': workOptions }
+  })
+  const view = await mount(panel, { host })
+  const boxes = () => nodes(view).filter((node) => node.type === 'Box')
+  // One card per story: the lone story, and the story with its sub-tasks.
+  assert.equal(boxes().filter((box) => box.props?.border === true).length, 2)
+  assert.equal(boxes().filter((box) => box.props?.border === 'accent').length, 0)
+
+  await view.press({ type: 'ListItem', text: /First sub-task/ })
+  const frames = boxes().filter((box) => box.props?.border === 'accent')
+  assert.equal(frames.length, 1)
+  const framed = words(frames[0])
+  // The selected row and its details, and nothing else.
+  assert.match(framed, /First sub-task/)
+  assert.match(framed, /Open in Shortcut/)
+  assert.ok(!/Lone story/.test(framed), 'only the selected row is framed')
   await view.unmount()
 })

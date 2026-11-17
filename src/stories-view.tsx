@@ -14,6 +14,7 @@ import {
   read,
   Row,
   Select,
+  Separator,
   set,
   shell,
   Spinner,
@@ -87,7 +88,7 @@ function descriptionOf(item: StoryItem, focusedStoryId: number | null): string {
         : item.worktrees.length > 1
           ? `${item.worktrees.length} worktrees`
           : item.worktrees.length === 1
-            ? item.worktrees[0].name
+            ? item.worktrees[0].branch
             : ''
   return [keyOf(item.id), worktree].filter(Boolean).join(' · ')
 }
@@ -199,30 +200,46 @@ function Rows({
   }
   return (
     <Stack gap="xs">
-      {list(items.slice(0, open + 1), 'above')}
-      <StoryDetails story={items[open]} />
+      {list(items.slice(0, open), 'above')}
+      {/* The selected row and its details in one accent frame: what is selected, and what the
+          details belong to, read at a glance. */}
+      <Box key="selected" border="accent" radius="md" background="accent" padding="xs" gap="xs">
+        {list([items[open]], 'open')}
+        <StoryDetails story={items[open]} />
+      </Box>
       {list(items.slice(open + 1), 'below')}
     </Stack>
   )
 }
 
-/** A parent story as a header, like a project in Orca's left sidebar, with its sub-tasks under it. */
+/**
+ * Each story is a card: its header, then its sub-tasks, so where one story ends and the next
+ * begins is plain. A story that matched on its own is a card with just its row.
+ */
 function Group({ group, focusedStoryId }: { group: StoryGroup; focusedStoryId: number | null }) {
   const { story } = group
   if (group.subtasks.length === 0) {
-    // A story that matched on its own: one row, like any other.
-    return <Rows label={story.name} items={[story]} focusedStoryId={focusedStoryId} />
+    return (
+      <Box border radius="md" background="card" padding="xs">
+        <Rows label={story.name} items={[story]} focusedStoryId={focusedStoryId} />
+      </Box>
+    )
   }
   return (
-    <Stack gap="xs">
-      <Row justify="between" gap="sm">
-        <Text weight="semibold" size="sm" truncate>
-          {story.name}
-        </Text>
-        <StatePill item={story} />
-      </Row>
+    <Box border radius="md" background="card" padding="xs" gap="xs">
+      <Box direction="row" justify="between" gap="sm" paddingX="xs" paddingY="xs">
+        <Box grow shrink minWidth={0}>
+          <Text weight="semibold" size="sm" truncate>
+            {story.name}
+          </Text>
+        </Box>
+        <Box shrink={false}>
+          <StatePill item={story} />
+        </Box>
+      </Box>
+      <Separator />
       <Rows label={story.name} items={group.subtasks} focusedStoryId={focusedStoryId} />
-    </Stack>
+    </Box>
   )
 }
 
@@ -325,7 +342,7 @@ export function StoriesView() {
       {current.groups.length === 0 ? (
         <EmptyState title="No stories" description="Nothing matches these filters." icon="search" />
       ) : (
-        <Box gap="lg">
+        <Box gap="md">
           {current.groups.map((group) => (
             <Group key={group.story.id} group={group} focusedStoryId={focusedStoryId} />
           ))}

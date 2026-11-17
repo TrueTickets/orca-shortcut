@@ -101,11 +101,14 @@ export function WorktreesView() {
             {`${current.worktrees.length} worktree${current.worktrees.length === 1 ? '' : 's'}` +
               (attention > 0 ? ` · ${attention} need${attention === 1 ? 's' : ''} attention` : '')}
           </Text>
-          <List label="Worktrees">
-            {current.worktrees.map((worktree) => (
-              <WorktreeRow key={worktree.workspaceId} worktree={worktree} />
-            ))}
-          </List>
+          {/* One card, as each story is one in the Stories tab. */}
+          <Box border radius="md" background="card" padding="xs">
+            <List label="Worktrees">
+              {current.worktrees.map((worktree) => (
+                <WorktreeRow key={worktree.workspaceId} worktree={worktree} />
+              ))}
+            </List>
+          </Box>
         </Stack>
       )}
     </Stack>

@@ -97,6 +97,13 @@
         "description": "The workflow state a sub-task created from the panel starts in.",
         "type": "string",
         "default": "Ready"
+      },
+      {
+        "key": "showReadyCount",
+        "title": "Show ready count",
+        "description": "Show in the status bar how many sub-tasks the default states and owner list, such as your sub-tasks in Ready.",
+        "type": "boolean",
+        "default": true
       }
     ],
     "events": [
@@ -115,6 +122,18 @@
         "id": "focused-story",
         "icon": "branch",
         "tooltip": "The Shortcut story of the focused worktree"
+      },
+      {
+        "id": "ready-count",
+        "icon": "layers",
+        "tooltip": "Your Shortcut sub-tasks ready to start",
+        "command": "shortcut.readyCount"
+      }
+    ],
+    "commands": [
+      {
+        "id": "shortcut.readyCount",
+        "title": "Shortcut: List sub-tasks ready to start"
       }
     ]
   },

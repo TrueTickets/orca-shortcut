@@ -54,6 +54,18 @@ then only stories the list's owner and states allow are found,
 the filters show above the results,
 and changing them searches again.
 
+### Ready count
+
+The status bar counts the sub-tasks the default states and owner list,
+such as **9 ready** for your sub-tasks in Ready
+(stories and archived sub-tasks are not counted).
+Its tooltip names the first five;
+pressing it counts again and lists them all.
+It refreshes after starting work, moving or creating a sub-task,
+and when a worktree is created or removed, and every five minutes otherwise.
+Orca does not let a plugin open its own panel, so pressing it cannot show the list.
+Turn it off with the **Show ready count** setting.
+
 ## Worktrees
 
 A worktree belongs to the story its git branch names:

@@ -86,6 +86,11 @@ function host(extra: Record<string, unknown> = {}) {
 
 const workspaceEvents = ['workspace.changed', 'workspace.created', 'workspace.removed']
 
+
+/** The last update of the focused-story item; the ready count updates its own item too. */
+const focusedItem = (h: ReturnType<typeof mockHost>) =>
+  h.callsOf('statusBar.update').filter((call) => (call as { id?: string }).id === 'focused-story').at(-1)
+
 test('lists every story worktree with its story now, problems first', async () => {
   fakeShortcut({ 11: raw(11), 12: raw(12, { workflow_state_id: 104 }) })
   const worker = await mountWorker(main, { host: host(), events: workspaceEvents })
@@ -138,7 +143,7 @@ test('the focused worktree names its story in the status bar and tells panels', 
     event: 'focus.changed',
     payload: { branch: 'ada/sc-11/drift', storyId: 11 }
   })
-  assert.deepEqual(h.callsOf('statusBar.update').at(-1), {
+  assert.deepEqual(focusedItem(h), {
     id: 'focused-story',
     text: 'sc-11 · In Development (Sub-tasks)',
     icon: 'branch',
@@ -152,7 +157,7 @@ test('the focused worktree names its story in the status bar and tells panels', 
   await worker.emit('workspace.changed', {
     context: { workspaceId: 'y', branch: 'main', displayName: 'main', terminals: [] }
   })
-  assert.deepEqual(h.callsOf('statusBar.update').at(-1), { id: 'focused-story', visible: false })
+  assert.deepEqual(focusedItem(h), { id: 'focused-story', visible: false })
   await worker.deactivate()
 })
 
@@ -163,7 +168,7 @@ test('the status bar notes, without warning, a focused worktree whose story is d
   await worker.emit('workspace.changed', {
     context: { branch: 'ada/sc-12/old', displayName: 'old', terminals: [] }
   })
-  const update = h.callsOf('statusBar.update').at(-1) as Record<string, unknown>
+  const update = focusedItem(h) as Record<string, unknown>
   assert.equal(update.tone, 'accent')
   assert.equal(update.icon, 'flag')
   assert.match(String(update.tooltip), /Done in Shortcut/)
@@ -208,7 +213,7 @@ test('the status bar flags, in accent, a focused worktree whose story is still i
   await worker.emit('workspace.changed', {
     context: { branch: 'ada/sc-11/drift', displayName: 'drift', terminals: [] }
   })
-  const update = h.callsOf('statusBar.update').at(-1) as Record<string, unknown>
+  const update = focusedItem(h) as Record<string, unknown>
   assert.deepEqual([update.text, update.icon, update.tone], ['sc-11 · New', 'flag', 'accent'])
   assert.match(String(update.tooltip), /backlog/)
   await worker.deactivate()

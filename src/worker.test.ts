@@ -35,8 +35,12 @@ const MEMBER_BODY = {
 }
 const keyring = { 'secrets.protection': { status: 'os-keyring' } }
 
+
+/** The status bar count calls Shortcut too; these tests count every call. */
+const noCount = { showReadyCount: false }
+
 test('starts disconnected', async () => {
-  const worker = await mountWorker(main, { host: mockHost({ results: keyring }) })
+  const worker = await mountWorker(main, { host: mockHost({ results: keyring, settings: noCount }) })
   assert.deepEqual(await worker.request('auth.status'), {
     connected: false,
     secretsAvailable: true
@@ -47,7 +51,7 @@ test('starts disconnected', async () => {
 
 test('checks the token against Shortcut, then stores it', async () => {
   const calls = fakeShortcut(200, MEMBER_BODY)
-  const host = mockHost({ results: keyring })
+  const host = mockHost({ results: keyring, settings: noCount })
   const worker = await mountWorker(main, { host })
 
   const connected = {
@@ -72,7 +76,7 @@ test('checks the token against Shortcut, then stores it', async () => {
 
 test('a rejected token is reported and never stored', async () => {
   fakeShortcut(401, { message: 'Unauthorized' })
-  const host = mockHost({ results: keyring })
+  const host = mockHost({ results: keyring, settings: noCount })
   const worker = await mountWorker(main, { host })
   await assert.rejects(worker.request('auth.connect', { token: 'bad' }), (error: unknown) => {
     assert.equal((error as { code?: string }).code, 'invalid_params')
@@ -88,7 +92,7 @@ test('an unreachable Shortcut is reported as unavailable', async () => {
   main.deps.fetch = async () => {
     throw new Error('getaddrinfo ENOTFOUND api.app.shortcut.com')
   }
-  const host = mockHost({ results: keyring })
+  const host = mockHost({ results: keyring, settings: noCount })
   const worker = await mountWorker(main, { host })
   await assert.rejects(worker.request('auth.connect', { token: 'tok' }), (error: unknown) => {
     assert.equal((error as { code?: string }).code, 'unavailable')
@@ -100,7 +104,7 @@ test('an unreachable Shortcut is reported as unavailable', async () => {
 
 test('refuses to connect without an OS key store, before calling Shortcut', async () => {
   const calls = fakeShortcut(200, MEMBER_BODY)
-  const host = mockHost({ results: { 'secrets.protection': { status: 'unavailable' } } })
+  const host = mockHost({ results: { 'secrets.protection': { status: 'unavailable' } }, settings: noCount })
   const worker = await mountWorker(main, { host })
   assert.deepEqual(await worker.request('auth.status'), {
     connected: false,
@@ -116,7 +120,7 @@ test('refuses to connect without an OS key store, before calling Shortcut', asyn
 
 test('disconnect forgets the token and the member', async () => {
   fakeShortcut(200, MEMBER_BODY)
-  const host = mockHost({ results: keyring })
+  const host = mockHost({ results: keyring, settings: noCount })
   const worker = await mountWorker(main, { host })
   await worker.request('auth.connect', { token: 'tok' })
   assert.deepEqual(await worker.request('auth.disconnect'), {

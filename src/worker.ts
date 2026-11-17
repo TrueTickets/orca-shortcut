@@ -36,6 +36,7 @@ import {
   shortBranch,
   storyIdOfBranch
 } from './worktree-links'
+import { readyCountItem, readyCountMessage, type ReadySubtask } from './ready-count'
 import { createSubtask, moveStory, startWork, workOptions, type WorkContext } from './work-actions'
 
 /** Secret key for the Shortcut API token. */
@@ -327,7 +328,99 @@ async function showFocusedStory(orca: OrcaWorkerApi, focus: FocusedStory): Promi
   })
 }
 
+/** The status bar item that counts the sub-tasks ready to start. */
+const READY_ITEM = 'ready-count'
+/** How often the count is refreshed when nothing the plugin does has changed it. */
+export const READY_REFRESH_MS = 5 * 60_000
+
+type ReadyCount = { subtasks: ReadySubtask[]; filter: StoryFilter; truncated: boolean }
+
+/** The sub-tasks the default filter lists; null when hidden by the setting or not connected. */
+async function countReady(orca: OrcaWorkerApi): Promise<ReadyCount | null> {
+  if ((await orca.settings.get('showReadyCount')) === false) {
+    return null
+  }
+  let connection: Awaited<ReturnType<typeof connectedClient>>
+  try {
+    connection = await connectedClient(orca)
+  } catch {
+    return null
+  }
+  const filter = await defaultFilter(orca)
+  const searches = await Promise.all(
+    filter.states.map((state) =>
+      connection.client.searchStories(buildSearchQuery(state, filter.owner, connection.mentionName))
+    )
+  )
+  const subtasks = new Map<number, ReadySubtask>()
+  for (const story of searches.flatMap((search) => search.stories)) {
+    if (story.parentStoryId !== null && !story.archived) {
+      subtasks.set(story.id, { id: story.id, name: story.name })
+    }
+  }
+  return {
+    subtasks: [...subtasks.values()].sort((a, b) => a.id - b.id),
+    filter,
+    truncated: searches.some((search) => search.truncated)
+  }
+}
+
+/** The refresh timer, cleared by `deactivate`. */
+let readyTimer: ReturnType<typeof setInterval> | undefined
+
+export function deactivate(): void {
+  clearInterval(readyTimer)
+  readyTimer = undefined
+}
+
 export default function activate(orca: OrcaWorkerApi): void {
+  /** One refresh at a time; a request during one waits for it and then runs again. */
+  let counting: Promise<ReadyCount | null> | null = null
+  let again = false
+  const refreshReadyCount = async (): Promise<ReadyCount | null> => {
+    if (counting) {
+      again = true
+      return counting
+    }
+    counting = (async () => {
+      let latest: ReadyCount | null = null
+      do {
+        again = false
+        try {
+          latest = await countReady(orca)
+          await orca.host.call(
+            'statusBar.update',
+            latest
+              ? { id: READY_ITEM, ...readyCountItem(latest.subtasks, latest.filter, latest.truncated), visible: true }
+              : { id: READY_ITEM, visible: false }
+          )
+        } catch (error) {
+          // A failed refresh leaves the last count up; the next one may succeed.
+          orca.log(`Could not count ready sub-tasks: ${String(error)}`)
+        }
+      } while (again)
+      return latest
+    })().finally(() => {
+      counting = null
+    })
+    return counting
+  }
+  /** After anything that may change what is ready; never holds up the answer. */
+  const recount = () => void refreshReadyCount()
+
+  clearInterval(readyTimer)
+  readyTimer = setInterval(recount, READY_REFRESH_MS)
+  // Never what keeps a process alive: Orca's channel keeps the worker running, and tests end.
+  ;(readyTimer as { unref?: () => void }).unref?.()
+  recount()
+
+  orca.commands.register('shortcut.readyCount', async () => {
+    const latest = await refreshReadyCount()
+    return latest
+      ? readyCountMessage(latest.subtasks, latest.filter, latest.truncated)
+      : 'Connect Shortcut in its panel to count sub-tasks, and turn on Show ready count.'
+  })
+
   /** The focused worktree, from `workspace.changed`; Orca sends the current one on subscribing. */
   let focus: FocusedStory = { branch: null, storyId: null }
 
@@ -344,7 +437,10 @@ export default function activate(orca: OrcaWorkerApi): void {
     )
   })
   for (const event of ['workspace.created', 'workspace.removed'] as const) {
-    orca.events.on(event, () => orca.panels.post('worktrees.changed', null))
+    orca.events.on(event, () => {
+      orca.panels.post('worktrees.changed', null)
+      recount()
+    })
   }
 
   orca.panels.handle('focus.get', () => focus)
@@ -364,12 +460,16 @@ export default function activate(orca: OrcaWorkerApi): void {
   orca.panels.handle('work.options', async ({ storyId }, { signal }) =>
     workOptions(orca, await workContext(), storyId, signal)
   )
-  orca.panels.handle('work.start', async (input) => startWork(orca, await workContext(), input))
+  orca.panels.handle('work.start', async (input) =>
+    startWork(orca, await workContext(), input).finally(recount)
+  )
   orca.panels.handle('subtask.create', async (input) =>
-    createSubtask(orca, await workContext(), input)
+    createSubtask(orca, await workContext(), input).finally(recount)
   )
 
-  orca.panels.handle('story.move', async (input) => moveStory(await workContext(), input))
+  orca.panels.handle('story.move', async (input) =>
+    moveStory(await workContext(), input).finally(recount)
+  )
 
   orca.panels.handle('worktrees.open', async ({ workspaceId }) => {
     await orca.host.call('workspace.open', { workspaceId })
@@ -401,6 +501,7 @@ export default function activate(orca: OrcaWorkerApi): void {
     orca.log(`Connected to Shortcut workspace "${member.workspaceName}" as @${member.mentionName}`)
     const next = await status(orca)
     orca.panels.post('auth.changed', next)
+    recount()
     return next
   })
 
@@ -409,6 +510,7 @@ export default function activate(orca: OrcaWorkerApi): void {
     await orca.storage.delete(MEMBER)
     const next = await status(orca)
     orca.panels.post('auth.changed', next)
+    recount()
     return next
   })
 }

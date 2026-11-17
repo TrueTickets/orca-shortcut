@@ -89,7 +89,9 @@ const connected = {
     'workspace.list': { workspaces: [], truncated: false }
   },
   secrets: { shortcutToken: 'tok' },
-  storage: { member: { name: 'Ada', mentionName: 'ada', workspaceName: 'Engines' } }
+  storage: { member: { name: 'Ada', mentionName: 'ada', workspaceName: 'Engines' } },
+  // The status bar count searches Shortcut too; these tests count what the list asks.
+  settings: { showReadyCount: false }
 }
 
 test('lists my Ready stories by default, under parents fetched when not mine', async () => {
@@ -130,7 +132,11 @@ test('the settings choose the default filter', async () => {
   const worker = await mountWorker(main, {
     host: mockHost({
       ...connected,
-      settings: { defaultStates: 'Ready, In Development (Sub-tasks)', defaultOwner: 'unassigned' }
+      settings: {
+        ...connected.settings,
+        defaultStates: 'Ready, In Development (Sub-tasks)',
+        defaultOwner: 'unassigned'
+      }
     })
   })
   const list = await worker.request('stories.list', {})

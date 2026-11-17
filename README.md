@@ -5,7 +5,8 @@ An [Orca](https://github.com/stablyai/orca) plugin that brings
 
 > Work in progress.
 > Today it connects to Shortcut with an API token
-> and lists your stories and sub-tasks.
+> and lists your stories and sub-tasks,
+> with the worktree each one is checked out in.
 > Starting worktrees from sub-tasks is next.
 
 ## How it works
@@ -22,6 +23,7 @@ so this plugin is a sidebar panel with its own worker:
 - `src/shortcut-api.ts` is a small Shortcut REST v3 client.
 - `src/story-tree.ts` turns the filter into Shortcut search queries
   and the results into a parent story → sub-task tree.
+- `src/worktree-links.ts` links Orca worktrees to stories by branch name.
 - `src/protocol.ts` types every panel ↔ worker request.
 
 ## Stories
@@ -32,6 +34,26 @@ even when the parent itself does not match the filter.
 The filter defaults to the `Default states` and `Default owner` settings
 (`Ready` and `me`);
 changing it in the panel is remembered.
+
+## Worktrees
+
+A worktree belongs to the story its git branch names:
+`ada/sc-1841/slug`, as Shortcut's branch helper makes it,
+belongs to `sc-1841`.
+The plugin reads branches live from Orca,
+so worktrees made by hand count too,
+and nothing is stored that could go stale.
+
+- Sub-tasks with a worktree are marked in the Stories tab,
+  with the agent status Orca reports,
+  and the focused worktree's sub-task is selected.
+- The Worktrees tab lists every worktree whose branch names a story,
+  whatever the filter.
+- The status bar names the focused worktree's story and its state.
+- Flagged: a sub-task in progress without a worktree,
+  more than one worktree for a story,
+  a worktree on a story instead of a sub-task,
+  and a worktree whose story is done or archived.
 
 ## Token
 
@@ -45,7 +67,7 @@ which it needs to reach the Shortcut API.
 
 ## Develop
 
-Needs Orca 1.4.246 or later.
+Needs Orca 1.4.248 or later.
 
 ```sh
 orca plugin validate .

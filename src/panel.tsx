@@ -2,126 +2,40 @@
 // The panel never sees the API token after it is submitted: the worker checks and stores it,
 // and makes every Shortcut call.
 import {
-  atom,
   Button,
   Callout,
-  Card,
-  Checkbox,
-  Collapsible,
-  EmptyState,
   Heading,
   IconButton,
   Input,
   plugin,
   read,
   Row,
-  Select,
   set,
-  shell,
   Spinner,
   Stack,
+  Tab,
+  Tabs,
   Text,
-  Tree,
-  type PanelContext,
-  type TreeItem
+  type PanelContext
 } from 'orca'
-import type {
-  AuthStatus,
-  StoryFilter,
-  StoryGroup,
-  StoryItem,
-  StoryList,
-  StoryOwner
-} from './protocol'
-import { describeFilter } from './story-tree'
-
-/** What the worker last reported; null until it answers. */
-const auth = atom<AuthStatus | null>(null)
-/** The token being typed. In memory only: never persisted by the panel. */
-const draft = atom('')
-const busy = atom(false)
-const error = atom<string | null>(null)
-
-/** The filter the person picked; null until they change one, so the settings' defaults apply. */
-const chosenFilter = atom<StoryFilter | null>('filter', null, { persist: 'plugin' })
-const list = atom<StoryList | null>(null)
-const loading = atom(false)
-const listError = atom<string | null>(null)
-const selected = atom<string | null>(null)
-const expanded = atom<readonly string[]>([])
-/** Only the newest list request may draw: an older answer arriving late is dropped. */
-let listRequest = 0
-
-const OWNER_OPTIONS: readonly { value: StoryOwner; label: string }[] = [
-  { value: 'me', label: 'Me' },
-  { value: 'anyone', label: 'Anyone' },
-  { value: 'unassigned', label: 'Unassigned' }
-]
-
-function messageOf(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason)
-}
-
-const keyOf = (id: number): string => `sc-${id}`
-
-async function loadStories(): Promise<void> {
-  if (read(auth)?.connected !== true) {
-    return
-  }
-  const request = ++listRequest
-  set(loading, true)
-  set(listError, null)
-  try {
-    const filter = read(chosenFilter)
-    const answer = await plugin.request('stories.list', filter ? { filter } : {})
-    if (request !== listRequest) {
-      return
-    }
-    set(list, answer)
-    set(
-      expanded,
-      answer.groups.map((group) => keyOf(group.story.id))
-    )
-  } catch (reason) {
-    if (request === listRequest) {
-      set(listError, messageOf(reason))
-    }
-  } finally {
-    if (request === listRequest) {
-      set(loading, false)
-    }
-  }
-}
-
-function changeFilter(change: (filter: StoryFilter) => StoryFilter): void {
-  const current = read(chosenFilter) ?? read(list)?.filter
-  if (!current) {
-    return
-  }
-  set(chosenFilter, change(current))
-  void loadStories()
-}
-
-function toggleState(state: string, checked: boolean): void {
-  changeFilter((filter) => ({
-    ...filter,
-    states: checked
-      ? [...filter.states, state]
-      : filter.states.filter((name) => name !== state)
-  }))
-}
-
-function setAuth(status: AuthStatus): void {
-  const wasConnected = read(auth)?.connected === true
-  set(auth, status)
-  if (status.connected && !wasConnected) {
-    void loadStories()
-  }
-  if (!status.connected) {
-    set(list, null)
-    set(selected, null)
-  }
-}
+import {
+  auth,
+  busy,
+  draft,
+  error,
+  focusChanged,
+  listLoading,
+  messageOf,
+  refresh,
+  setAuth,
+  showTab,
+  tab,
+  worktreesChanged,
+  worktreesLoading,
+  type Tab as TabName
+} from './state'
+import { StoriesView } from './stories-view'
+import { WorktreesView } from './worktrees-view'
 
 async function connect(): Promise<void> {
   set(busy, true)
@@ -147,143 +61,20 @@ async function disconnect(): Promise<void> {
 
 /** Runs once before the first render; what it pushes to `subscriptions` ends with the panel. */
 export function setup(ctx: PanelContext): void {
-  ctx.subscriptions.push(plugin.on('auth.changed', setAuth))
+  ctx.subscriptions.push(
+    plugin.on('auth.changed', setAuth),
+    plugin.on('focus.changed', focusChanged),
+    plugin.on('worktrees.changed', worktreesChanged)
+  )
   void plugin
     .request('auth.status')
     .then(setAuth)
     .catch((reason: unknown) => set(error, messageOf(reason)))
-}
-
-/**
- * Rows are narrow, so a row names its state only when the filter spans several states and the
- * state tells rows apart; the detail card always shows it.
- */
-function storyItem(group: StoryGroup, showState: boolean): TreeItem {
-  const { story } = group
-  const noSubtasks = group.matched && story.parentId === null && story.subTaskCount === 0
-  const describe = (item: StoryItem, extra = '') =>
-    // A parent shown only as context keeps to its id: its state is not what was filtered.
-    [keyOf(item.id), showState && group.matched ? item.state : '', extra]
-      .filter(Boolean)
-      .join(' · ')
-  return {
-    key: keyOf(story.id),
-    label: story.name,
-    description: describe(story, noSubtasks ? 'no sub-tasks' : ''),
-    icon: story.parentId === null ? 'book' : 'branch',
-    children:
-      group.subtasks.length > 0
-        ? group.subtasks.map((subtask) => ({
-            key: keyOf(subtask.id),
-            label: subtask.name,
-            description: [keyOf(subtask.id), showState ? subtask.state : ''].filter(Boolean).join(' · '),
-            icon: 'branch' as const
-          }))
-        : undefined
-  }
-}
-
-function findItem(groups: readonly StoryGroup[], key: string | null): StoryItem | null {
-  for (const group of groups) {
-    if (keyOf(group.story.id) === key) {
-      return group.story
-    }
-    const subtask = group.subtasks.find((candidate) => keyOf(candidate.id) === key)
-    if (subtask) {
-      return subtask
-    }
-  }
-  return null
-}
-
-function Filters({ current }: { current: StoryList }) {
-  const filter = read(chosenFilter) ?? current.filter
-  return (
-    <Collapsible title="Filters" description={describeFilter(filter)}>
-      <Stack gap="sm">
-        <Select
-          label="Owner"
-          value={filter.owner}
-          options={OWNER_OPTIONS}
-          onChange={(owner) => changeFilter((before) => ({ ...before, owner: owner as StoryOwner }))}
-        />
-        {current.states
-          .filter((state) => state.type !== 'done')
-          .map((state) => (
-            <Checkbox
-              key={state.name}
-              label={state.name}
-              checked={filter.states.includes(state.name)}
-              onChange={(checked) => toggleState(state.name, checked)}
-            />
-          ))}
-      </Stack>
-    </Collapsible>
-  )
-}
-
-function Detail({ story }: { story: StoryItem }) {
-  const where =
-    story.parentId === null
-      ? `Story · ${story.subTaskCount} sub-task${story.subTaskCount === 1 ? '' : 's'}`
-      : `Sub-task of ${keyOf(story.parentId)}`
-  return (
-    <Card title={story.name} description={`${keyOf(story.id)} · ${story.state}`}>
-      <Stack gap="sm">
-        <Text muted size="xs">
-          {where}
-        </Text>
-        <Row>
-          <Button
-            variant="ghost"
-            icon="open-external"
-            onPress={() => void shell.openExternal(story.url)}
-          >
-            Open in Shortcut
-          </Button>
-        </Row>
-      </Stack>
-    </Card>
-  )
-}
-
-function Stories() {
-  const current = read(list)
-  const problem = read(listError)
-  if (current === null) {
-    return problem ? <Callout tone="danger">{problem}</Callout> : <Spinner label="Loading stories" />
-  }
-  const story = findItem(current.groups, read(selected))
-  return (
-    <Stack gap="md">
-      <Filters current={current} />
-      {problem ? <Callout tone="danger">{problem}</Callout> : null}
-      {current.truncated ? (
-        <Callout tone="warning">Some states have more stories than the list shows.</Callout>
-      ) : null}
-      {current.groups.length === 0 ? (
-        <EmptyState
-          title="No stories"
-          description="Nothing matches these filters."
-          icon="search"
-        />
-      ) : (
-        <Tree
-          label="Stories"
-          items={current.groups.map((group) => storyItem(group, current.filter.states.length > 1))}
-          selected={read(selected) ?? undefined}
-          expanded={read(expanded)}
-          onSelect={({ key }) => set(selected, key)}
-          onToggle={({ key, expanded: open }) =>
-            set(expanded, (open
-              ? [...read(expanded), key]
-              : read(expanded).filter((candidate) => candidate !== key)))
-          }
-        />
-      )}
-      {story ? <Detail story={story} /> : null}
-    </Stack>
-  )
+  // Ask after the worker sees Orca's focus; an older worker without it simply leaves none.
+  void plugin
+    .request('focus.get')
+    .then(focusChanged)
+    .catch(() => undefined)
 }
 
 function ConnectForm({ secretsAvailable }: { secretsAvailable: boolean }) {
@@ -325,8 +116,8 @@ export default function Panel() {
           <IconButton
             icon="refresh"
             label="Refresh"
-            disabled={read(loading)}
-            onPress={() => void loadStories()}
+            disabled={read(listLoading) || read(worktreesLoading)}
+            onPress={refresh}
           />
         ) : null}
       </Row>
@@ -335,7 +126,14 @@ export default function Panel() {
         problem ? null : <Spinner label="Loading" />
       ) : status.connected ? (
         <Stack gap="md">
-          <Stories />
+          <Tabs label="View" value={read(tab)} onChange={(value) => showTab(value as TabName)}>
+            <Tab value="stories" label="Stories" icon="book">
+              <StoriesView />
+            </Tab>
+            <Tab value="worktrees" label="Worktrees" icon="folder">
+              <WorktreesView />
+            </Tab>
+          </Tabs>
           <Row justify="between">
             <Text muted size="xs">
               {`Connected as @${status.member.mentionName} · ${status.member.workspaceName}`}

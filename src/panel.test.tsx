@@ -1,8 +1,8 @@
 // `orca plugin test .` runs this in Node with the same runtime and checks Orca uses.
 import { assert, hostError, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
-import type { AuthStatus, StoryFilter, StoryList } from './protocol'
-import { storyItem } from './test-fixtures'
+import type { AuthStatus, StoryFilter, StoryList, WorktreeList } from './protocol'
+import { storyItem, worktreeRef } from './test-fixtures'
 
 const disconnected: AuthStatus = { connected: false, secretsAvailable: true }
 const noKeyStore: AuthStatus = { connected: false, secretsAvailable: false }
@@ -132,7 +132,7 @@ test('rows name their state when the filter spans several states', async () => {
   const host = mockHost({ requests: { 'auth.status': connected, 'stories.list': several } })
   const view = await mount(panel, { host })
   const items = view.find({ type: 'Tree' })?.props?.items as { description: string; children?: { description: string }[] }[]
-  assert.equal(items[0].description, 'sc-30 · Ready · no sub-tasks')
+  assert.equal(items[0].description, 'sc-30 · no sub-tasks · Ready')
   // A parent shown only as context keeps to its id: its state is not what was filtered.
   assert.equal(items[1].description, 'sc-10')
   assert.equal(items[1].children?.[0].description, 'sc-11 · Ready')
@@ -218,4 +218,109 @@ test('says when nothing matches, and when the list failed', async () => {
   const failed = await mount(panel, { host: failing })
   assert.ok(failed.find({ text: 'Shortcut is rate limiting requests; try again shortly.' }))
   await failed.unmount()
+})
+
+// ---- Worktrees ----
+
+const here = worktreeRef(11)
+const working = worktreeRef(12, { agent: 'working' })
+const linkedList: StoryList = {
+  ...list,
+  filter: { states: ['In Development (Sub-tasks)'], owner: 'me' },
+  groups: [
+    {
+      story: storyItem(10, { name: 'Parent story', subTaskCount: 3 }),
+      matched: false,
+      subtasks: [
+        storyItem(11, { name: 'Focused work', parentId: 10, stateType: 'started', worktrees: [here] }),
+        storyItem(12, { name: 'Agent work', parentId: 10, stateType: 'started', worktrees: [working] }),
+        storyItem(13, { name: 'Forgotten work', parentId: 10, stateType: 'started', flags: ['no-worktree'] })
+      ]
+    }
+  ]
+}
+const linkedWorktrees: WorktreeList = {
+  worktrees: [
+    { ...worktreeRef(9, { name: 'old' }), storyId: 9, story: storyItem(9, { state: 'Complete', stateType: 'done' }), focused: false, flags: ['stale'] },
+    { ...here, storyId: 11, story: linkedList.groups[0].subtasks[0], focused: true, flags: [] }
+  ]
+}
+
+function linkedHost(extra: Record<string, unknown> = {}) {
+  return mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': linkedList,
+      'worktrees.list': linkedWorktrees,
+      'focus.get': { branch: here.branch, storyId: 11 },
+      'worktrees.open': null,
+      ...extra
+    }
+  })
+}
+
+type Row = { key: string; icon: string; description: string }
+const subtaskRows = (view: Awaited<ReturnType<typeof mount>>) =>
+  ((view.find({ type: 'Tree' })?.props?.items as { children: Row[] }[])[0].children)
+
+test('marks sub-tasks by their worktree: here, agent working, missing', async () => {
+  const view = await mount(panel, { host: linkedHost() })
+  const [focused, agent, forgotten] = subtaskRows(view)
+  assert.deepEqual([focused.icon, focused.description], ['folder', 'sc-11 · here'])
+  assert.deepEqual([agent.icon, agent.description], ['bot', 'sc-12 · agent working'])
+  assert.deepEqual([forgotten.icon, forgotten.description], ['warning', 'sc-13 · no worktree'])
+  // The focused worktree's sub-task is selected, so the tree highlights it.
+  assert.equal(view.find({ type: 'Tree' })?.props?.selected, 'sc-11')
+  await view.unmount()
+})
+
+test('follows Orca focus into the list', async () => {
+  const view = await mount(panel, { host: linkedHost() })
+  await view.post('focus.changed', { branch: working.branch, storyId: 12 })
+  assert.equal(view.find({ type: 'Tree' })?.props?.selected, 'sc-12')
+  assert.equal(subtaskRows(view)[1].description, 'sc-12 · here')
+  await view.unmount()
+})
+
+test('the detail card opens the sub-task worktree and says what is off', async () => {
+  const sent: unknown[] = []
+  const view = await mount(panel, {
+    host: linkedHost({ 'worktrees.open': (input: unknown) => (sent.push(input), null) })
+  })
+  await view.press({ text: 'Open worktree' })
+  assert.deepEqual(sent, [{ workspaceId: here.workspaceId }])
+
+  await view.selectItem({ type: 'Tree' }, 'sc-13')
+  assert.ok(view.find({ text: 'In progress without a worktree.' }))
+  assert.equal(view.find({ text: 'Open worktree' }), null)
+  await view.unmount()
+})
+
+test('the Worktrees tab lists story worktrees, problems first, and opens one', async () => {
+  const sent: unknown[] = []
+  const view = await mount(panel, {
+    host: linkedHost({ 'worktrees.open': (input: unknown) => (sent.push(input), null) })
+  })
+  await view.select({ label: 'View' }, 'worktrees')
+  assert.ok(view.find({ text: '2 worktrees · 1 needs attention' }))
+  const rows = view.findAll({ type: 'ListItem' })
+  assert.deepEqual(rows.map((row) => [row.props?.title, row.props?.current ?? false]), [
+    ['sc-9 · Story 9', false],
+    ['sc-11 · Focused work', true]
+  ])
+  assert.ok(view.find({ text: 'The story is done or archived: the worktree can go.' }))
+  await view.press({ type: 'ListItem', text: /sc-9/ })
+  assert.deepEqual(sent, [{ workspaceId: 'ws-9' }])
+  await view.unmount()
+})
+
+test('a created or removed worktree reloads the list', async () => {
+  let calls = 0
+  const view = await mount(panel, {
+    host: linkedHost({ 'stories.list': () => (calls++, linkedList) })
+  })
+  assert.equal(calls, 1)
+  await view.post('worktrees.changed', null)
+  assert.equal(calls, 2)
+  await view.unmount()
 })

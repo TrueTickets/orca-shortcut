@@ -134,18 +134,17 @@ function rows(view: View) {
         .map((badge: Element) => `${(badge.props?.tone as string) ?? 'neutral'}:${badge.text}`)
     }
   })
-  // A story header is a one-line row; stories and sub-tasks in a list have a second line.
-  return all.filter((row) => row.description !== undefined)
+  // A story header is the one row without an icon (its chevron sits beside it).
+  return all.filter((row) => row.icon !== undefined)
 }
 
-/** The story headers: one-line rows, each opening its story's details. */
+/** The story headers: rows without an icon, each opening its story's details. */
 function headers(view: View): string[] {
   const texts = view.findAll({ type: 'Text' })
   return view
     .findAll({ type: 'ListItem' })
-    .map((row: Element) => texts.filter((text: Element) => text.path.startsWith(`${row.path}/`)))
-    .filter((lines) => lines.length === 1)
-    .map((lines) => lines[0].text)
+    .filter((row: Element) => row.props?.icon === undefined)
+    .map((row: Element) => texts.find((text: Element) => text.path.startsWith(`${row.path}/`))?.text ?? '')
 }
 
 test('lists sub-tasks under a header for their story, as Orca lists worktrees', async () => {
@@ -690,5 +689,29 @@ test('a story header opens the story, with Create sub-task, above its sub-tasks'
   assert.ok(!/First sub-task/.test(framed))
   await view.press({ type: 'ListItem', text: /Parent story/ })
   assert.equal(view.find({ type: 'Button', text: 'Create sub-task' }), null)
+  await view.unmount()
+})
+
+// ---- Folding ----
+
+test('a story folds its sub-tasks away, says how many, and remembers it', async () => {
+  const view = await mount(panel, { host: linkedHost() })
+  assert.equal(rows(view).length, 3)
+  await view.press({ type: 'IconButton', label: 'Hide sub-tasks of sc-10' })
+  assert.equal(rows(view).length, 0)
+  // The focused worktree's sub-task is among them: the header says where you are.
+  assert.ok(view.find({ text: '3 sub-tasks · here' }))
+  assert.deepEqual(view.persisted.plugin.collapsed, [10])
+
+  await view.press({ type: 'IconButton', label: 'Show sub-tasks of sc-10' })
+  assert.equal(rows(view).length, 3)
+  assert.deepEqual(view.persisted.plugin.collapsed, [])
+  await view.unmount()
+})
+
+test('a story folded in an earlier run starts folded', async () => {
+  const view = await mount(panel, { host: linkedHost(), persisted: { plugin: { collapsed: [10] } } })
+  assert.equal(rows(view).length, 0)
+  assert.ok(view.find({ type: 'IconButton', label: 'Show sub-tasks of sc-10' }))
   await view.unmount()
 })

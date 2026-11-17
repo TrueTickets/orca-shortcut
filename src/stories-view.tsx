@@ -9,23 +9,25 @@ import {
   Checkbox,
   Collapsible,
   EmptyState,
+  IconButton,
   List,
   ListItem,
   read,
   Row,
   Select,
-  Separator,
   set,
   shell,
   Spinner,
   Stack,
   Text,
+  update,
   type IconName,
   type OrcaNode
 } from 'orca'
 import type { StoryFilter, StoryGroup, StoryItem, StoryList, StoryOwner } from './protocol'
 import {
   chosenFilter,
+  collapsed,
   focus,
   keyOf,
   list,
@@ -250,22 +252,50 @@ function Group({ group, focusedStoryId }: { group: StoryGroup; focusedStoryId: n
     )
   }
   // The header is a row too, so the story can be opened: its details hold Create sub-task and
-  // Open in Shortcut. It opens on the selection tint, above the story's sub-tasks.
+  // Open in Shortcut. It opens on the selection tint, above the story's sub-tasks. The chevron
+  // beside it folds the sub-tasks away; it sits outside the row, since rows hold no buttons.
+  const folded = read(collapsed).includes(story.id)
+  const hidden = folded
+    ? [
+        `${group.subtasks.length} sub-task${group.subtasks.length === 1 ? '' : 's'}`,
+        group.subtasks.some((subtask) => subtask.id === focusedStoryId) ? 'here' : ''
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : ''
   const header = (
-    <List label={story.name}>
-      <ListItem icon="book" onPress={() => toggle(story)}>
-        <Box direction="row" justify="between" gap="sm">
-          <Box grow shrink minWidth={0}>
-            <Text weight="semibold" size="sm" truncate>
-              {story.name}
-            </Text>
-          </Box>
-          <Box shrink={false}>
-            <StatePill item={story} />
-          </Box>
-        </Box>
-      </ListItem>
-    </List>
+    <Box direction="row" gap="xs" align="center">
+      <Box shrink={false}>
+        <IconButton
+          icon={folded ? 'next' : 'expand'}
+          label={folded ? `Show sub-tasks of ${keyOf(story.id)}` : `Hide sub-tasks of ${keyOf(story.id)}`}
+          variant="ghost"
+          size="sm"
+          onPress={() => toggleFolded(story.id)}
+        />
+      </Box>
+      <Box grow shrink minWidth={0}>
+        <List label={story.name}>
+          <ListItem onPress={() => toggle(story)}>
+            <Box direction="row" justify="between" gap="sm">
+              <Box grow shrink minWidth={0}>
+                <Text weight="semibold" size="sm" truncate>
+                  {story.name}
+                </Text>
+              </Box>
+              <Box direction="row" gap="xs" shrink={false} align="center">
+                {hidden ? (
+                  <Text size="xs" muted>
+                    {hidden}
+                  </Text>
+                ) : null}
+                <StatePill item={story} />
+              </Box>
+            </Box>
+          </ListItem>
+        </List>
+      </Box>
+    </Box>
   )
   return (
     <Box radius="md" background="muted" padding="xs" gap="xs">
@@ -277,9 +307,22 @@ function Group({ group, focusedStoryId }: { group: StoryGroup; focusedStoryId: n
       ) : (
         header
       )}
-      <Separator />
-      <Rows label={story.name} items={group.subtasks} focusedStoryId={focusedStoryId} />
+      {folded ? null : (
+        // Sub-tasks indented under the story's title, as a tree draws children under a parent.
+        <Box direction="row">
+          <Box width={22} shrink={false} />
+          <Box grow shrink minWidth={0}>
+            <Rows label={story.name} items={group.subtasks} focusedStoryId={focusedStoryId} />
+          </Box>
+        </Box>
+      )}
     </Box>
+  )
+}
+
+function toggleFolded(storyId: number): void {
+  update(collapsed, (ids) =>
+    ids.includes(storyId) ? ids.filter((id) => id !== storyId) : [...ids, storyId]
   )
 }
 

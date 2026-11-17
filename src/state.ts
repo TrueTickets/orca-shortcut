@@ -19,6 +19,8 @@ export const list = atom<StoryList | null>(null)
 export const listLoading = atom(false)
 export const listError = atom<string | null>(null)
 export const selected = atom<string | null>(null)
+/** Stories whose sub-tasks are folded away, by id; remembered across panel runs. */
+export const collapsed = atom<readonly number[]>('collapsed', [], { persist: 'plugin' })
 
 export const worktrees = atom<WorktreeList | null>(null)
 export const worktreesLoading = atom(false)

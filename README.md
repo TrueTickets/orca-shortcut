@@ -43,3 +43,7 @@ orca plugin dev watch .   # loads this folder into Orca and streams its logs; Ct
 ```
 
 There is no build step: Orca transpiles the TypeScript when it loads.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -2,8 +2,20 @@
 // file when it loads: no build step. It is the only part of the plugin that talks to Shortcut —
 // panel frames have no network — and the only part that ever sees the API token.
 import type { OrcaWorkerApi } from 'orca/worker'
-import type { AuthStatus } from './protocol'
-import { codedError, createShortcutClient, type FetchLike } from './shortcut-api'
+import type { AuthStatus, StoryFilter, StoryList } from './protocol'
+import {
+  codedError,
+  createShortcutClient,
+  type FetchLike,
+  type ShortcutClient,
+  type ShortcutStory
+} from './shortcut-api'
+import {
+  buildSearchQuery,
+  buildStoryGroups,
+  normalizeFilter,
+  workflowStateOptions
+} from './story-tree'
 
 /** Secret key for the Shortcut API token. */
 const TOKEN = 'shortcutToken'
@@ -43,7 +55,87 @@ async function status(orca: OrcaWorkerApi): Promise<AuthStatus> {
   return { connected: false, secretsAvailable: available }
 }
 
+/** What the `defaultStates` and `defaultOwner` settings say, used when the panel sends no filter. */
+async function defaultFilter(orca: OrcaWorkerApi): Promise<StoryFilter> {
+  const [states, owner] = await Promise.all([
+    orca.settings.get('defaultStates'),
+    orca.settings.get('defaultOwner')
+  ])
+  return normalizeFilter({ states, owner }, { states: ['Ready'], owner: 'me' })
+}
+
+async function connectedClient(
+  orca: OrcaWorkerApi
+): Promise<{ client: ShortcutClient; mentionName: string }> {
+  const [token, member] = await Promise.all([orca.secrets.get(TOKEN), orca.storage.get(MEMBER)])
+  if (!token || !isStoredMember(member)) {
+    throw codedError('unavailable', 'Connect Shortcut first.')
+  }
+  return { client: createShortcutClient(token, deps.fetch), mentionName: member.mentionName }
+}
+
+/** How many stories the worker fetches from Shortcut at once. */
+const PARENT_FETCH_CONCURRENCY = 6
+
+async function listStories(
+  orca: OrcaWorkerApi,
+  requested: StoryFilter | undefined,
+  signal: AbortSignal
+): Promise<StoryList> {
+  const { client, mentionName } = await connectedClient(orca)
+  const fallback = await defaultFilter(orca)
+  const filter = requested ? normalizeFilter(requested, fallback) : fallback
+
+  const [workflowStates, searches] = await Promise.all([
+    client.listWorkflowStates(signal),
+    Promise.all(
+      filter.states.map((state) =>
+        client.searchStories(buildSearchQuery(state, filter.owner, mentionName), { signal })
+      )
+    )
+  ])
+
+  const matches = new Map<number, ShortcutStory>()
+  for (const search of searches) {
+    for (const story of search.stories) {
+      matches.set(story.id, story)
+    }
+  }
+
+  // Parents that did not match themselves, such as a story someone else owns.
+  const missing = [
+    ...new Set(
+      [...matches.values()]
+        .map((story) => story.parentStoryId)
+        .filter((id): id is number => id !== null && !matches.has(id))
+    )
+  ]
+  const parents = new Map<number, ShortcutStory>()
+  for (let start = 0; start < missing.length; start += PARENT_FETCH_CONCURRENCY) {
+    const batch = missing.slice(start, start + PARENT_FETCH_CONCURRENCY)
+    const settled = await Promise.allSettled(batch.map((id) => client.getStory(id, signal)))
+    settled.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        parents.set(result.value.id, result.value)
+      } else {
+        orca.log(`Could not fetch parent story sc-${batch[index]}: ${String(result.reason)}`)
+      }
+    })
+  }
+
+  return {
+    filter,
+    states: workflowStateOptions(workflowStates),
+    groups: buildStoryGroups([...matches.values()], parents, workflowStates),
+    truncated: searches.some((search) => search.truncated)
+  }
+}
+
 export default function activate(orca: OrcaWorkerApi): void {
+  orca.panels.handle('stories.list', (input, { signal }) =>
+    listStories(orca, input?.filter, signal)
+  )
+
   orca.panels.handle('auth.status', () => status(orca))
 
   orca.panels.handle('auth.connect', async ({ token }, { signal }) => {

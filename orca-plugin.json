@@ -19,6 +19,32 @@
         "entry": "src/panel.tsx",
         "ui": "components"
       }
+    ],
+    "settings": [
+      {
+        "key": "defaultStates",
+        "title": "Default states",
+        "description": "Workflow states the list shows until you pick others in the panel, separated by commas. Names as in Shortcut, e.g. Ready, In Development (Sub-tasks).",
+        "type": "string",
+        "default": "Ready"
+      },
+      {
+        "key": "defaultOwner",
+        "title": "Default owner",
+        "description": "Whose stories the list shows until you pick another owner in the panel.",
+        "type": "string",
+        "enum": [
+          "me",
+          "anyone",
+          "unassigned"
+        ],
+        "enumLabels": [
+          "Me",
+          "Anyone",
+          "Unassigned"
+        ],
+        "default": "me"
+      }
     ]
   },
   "capabilities": [
@@ -27,6 +53,9 @@
     },
     {
       "kind": "secrets:own"
+    },
+    {
+      "kind": "settings:own"
     }
   ],
   "license": "MIT"

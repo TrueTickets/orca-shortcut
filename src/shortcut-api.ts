@@ -1,7 +1,11 @@
 // A minimal Shortcut REST v3 client. `fetch` is injected so tests can answer requests without the
 // network; the worker passes Node's global fetch.
 
-export const SHORTCUT_API_BASE = 'https://api.app.shortcut.com/api/v3'
+export const SHORTCUT_ORIGIN = 'https://api.app.shortcut.com'
+export const SHORTCUT_API_BASE = `${SHORTCUT_ORIGIN}/api/v3`
+
+/** Shortcut's search answers at most this many stories per page. */
+const SEARCH_PAGE_SIZE = 25
 
 export type FetchLike = (
   url: string,
@@ -24,15 +28,83 @@ export type ShortcutMember = {
   workspaceSlug: string
 }
 
+/** The fields of a story the plugin reads, from a slim search result or a full story. */
+export type ShortcutStory = {
+  id: number
+  name: string
+  appUrl: string
+  storyType: string
+  workflowStateId: number
+  parentStoryId: number | null
+  subTaskIds: number[]
+  ownerIds: string[]
+}
+
+export type ShortcutWorkflowState = {
+  id: number
+  name: string
+  type: string
+  position: number
+}
+
+export type StorySearchResult = {
+  stories: ShortcutStory[]
+  /** How many stories Shortcut says match, including any not fetched. */
+  total: number
+  /** True when `maxPages` stopped the search before the last page. */
+  truncated: boolean
+}
+
 export type ShortcutClient = {
   getCurrentMember(signal?: AbortSignal): Promise<ShortcutMember>
+  /** Runs a Shortcut search query (the same syntax as Shortcut's search box). */
+  searchStories(
+    query: string,
+    options?: { maxPages?: number; signal?: AbortSignal }
+  ): Promise<StorySearchResult>
+  getStory(id: number, signal?: AbortSignal): Promise<ShortcutStory>
+  /** Every state of every workflow in the workspace. */
+  listWorkflowStates(signal?: AbortSignal): Promise<ShortcutWorkflowState[]>
+}
+
+type RawStory = {
+  id?: unknown
+  name?: unknown
+  app_url?: unknown
+  story_type?: unknown
+  workflow_state_id?: unknown
+  parent_story_id?: unknown
+  sub_task_story_ids?: unknown
+  owner_ids?: unknown
+}
+
+function toStory(raw: RawStory): ShortcutStory {
+  if (typeof raw?.id !== 'number' || typeof raw.workflow_state_id !== 'number') {
+    throw codedError('action_failed', 'Shortcut answered a story without an id or state.')
+  }
+  return {
+    id: raw.id,
+    name: String(raw.name ?? ''),
+    appUrl: String(raw.app_url ?? ''),
+    storyType: String(raw.story_type ?? ''),
+    workflowStateId: raw.workflow_state_id,
+    parentStoryId: typeof raw.parent_story_id === 'number' ? raw.parent_story_id : null,
+    subTaskIds: Array.isArray(raw.sub_task_story_ids)
+      ? raw.sub_task_story_ids.filter((id): id is number => typeof id === 'number')
+      : [],
+    ownerIds: Array.isArray(raw.owner_ids)
+      ? raw.owner_ids.filter((id): id is string => typeof id === 'string')
+      : []
+  }
 }
 
 export function createShortcutClient(token: string, fetchImpl: FetchLike): ShortcutClient {
+  /** `path` is relative to the API base, or a server-given path that starts with `/api/v3`. */
   async function request(method: string, path: string, signal?: AbortSignal): Promise<unknown> {
+    const url = path.startsWith('/api/') ? `${SHORTCUT_ORIGIN}${path}` : `${SHORTCUT_API_BASE}${path}`
     let response: Awaited<ReturnType<FetchLike>>
     try {
-      response = await fetchImpl(`${SHORTCUT_API_BASE}${path}`, {
+      response = await fetchImpl(url, {
         method,
         headers: { 'Content-Type': 'application/json', 'Shortcut-Token': token },
         signal
@@ -50,7 +122,8 @@ export function createShortcutClient(token: string, fetchImpl: FetchLike): Short
       throw codedError('rate_limited', 'Shortcut is rate limiting requests; try again shortly.')
     }
     if (!response.ok) {
-      throw codedError('action_failed', `Shortcut answered ${response.status} for ${method} ${path}.`)
+      const what = path.split('?')[0]
+      throw codedError('action_failed', `Shortcut answered ${response.status} for ${method} ${what}.`)
     }
     return response.json()
   }
@@ -73,6 +146,56 @@ export function createShortcutClient(token: string, fetchImpl: FetchLike): Short
         workspaceName: String(body.workspace2?.name ?? ''),
         workspaceSlug: String(body.workspace2?.url_slug ?? '')
       }
+    },
+
+    async searchStories(query, options = {}) {
+      const maxPages = options.maxPages ?? 4
+      const params = new URLSearchParams({
+        query,
+        detail: 'slim',
+        page_size: String(SEARCH_PAGE_SIZE)
+      })
+      let path: string | null = `/search/stories?${params.toString()}`
+      const stories: ShortcutStory[] = []
+      let total = 0
+      let pages = 0
+      while (path && pages < maxPages) {
+        const body = (await request('GET', path, options.signal)) as {
+          data?: unknown
+          total?: unknown
+          next?: unknown
+        }
+        const data = Array.isArray(body?.data) ? (body.data as RawStory[]) : []
+        stories.push(...data.map(toStory))
+        total = typeof body?.total === 'number' ? body.total : stories.length
+        path = typeof body?.next === 'string' && body.next ? body.next : null
+        pages += 1
+      }
+      return { stories, total, truncated: path !== null }
+    },
+
+    async getStory(id, signal) {
+      return toStory((await request('GET', `/stories/${id}`, signal)) as RawStory)
+    },
+
+    async listWorkflowStates(signal) {
+      const body = await request('GET', '/workflows', signal)
+      const workflows = Array.isArray(body) ? (body as { states?: unknown }[]) : []
+      const states: ShortcutWorkflowState[] = []
+      for (const workflow of workflows) {
+        for (const raw of Array.isArray(workflow?.states) ? workflow.states : []) {
+          const state = raw as { id?: unknown; name?: unknown; type?: unknown; position?: unknown }
+          if (typeof state.id === 'number' && typeof state.name === 'string') {
+            states.push({
+              id: state.id,
+              name: state.name,
+              type: String(state.type ?? ''),
+              position: typeof state.position === 'number' ? state.position : 0
+            })
+          }
+        }
+      }
+      return states
     }
   }
 }

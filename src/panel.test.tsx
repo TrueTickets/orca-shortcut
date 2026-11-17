@@ -186,7 +186,6 @@ test('pressing a row opens its details right under it, and a second press closes
   })
   const view = await mount(panel, { host })
   await view.press({ type: 'ListItem', text: /First sub-task/ })
-  assert.equal(rows(view)[1].current, true)
   // The details follow the pressed row in the drawn tree, not the end of the list.
   const tree = JSON.stringify(view.tree())
   const details = tree.indexOf('sc-11 · Sub-task of sc-10')
@@ -199,7 +198,6 @@ test('pressing a row opens its details right under it, and a second press closes
   assert.deepEqual(view.refusals, [])
 
   await view.press({ type: 'ListItem', text: /First sub-task/ })
-  assert.equal(rows(view)[1].current, false)
   assert.equal(view.find({ text: 'Open in Shortcut' }), null)
   await view.unmount()
 })
@@ -352,6 +350,7 @@ test('the card opens the sub-task worktree and says what is off', async () => {
   const view = await mount(panel, {
     host: linkedHost({ 'worktrees.open': (input: unknown) => (sent.push(input), null) })
   })
+  await view.press({ type: 'ListItem', text: /Focused work/ })
   await view.press({ text: 'Open worktree' })
   assert.deepEqual(sent, [{ workspaceId: here.workspaceId }])
 
@@ -538,23 +537,50 @@ function words(node: unknown): string {
   return (el?.children ?? []).map(words).join(' ')
 }
 
-test('each story is its own card, and the selected row shares an accent frame with its details', async () => {
+test('each story is its own card, and the selected row shares an accent tint with its details', async () => {
   const host = mockHost({
     requests: { 'auth.status': connected, 'stories.list': list, 'work.options': workOptions }
   })
   const view = await mount(panel, { host })
   const boxes = () => nodes(view).filter((node) => node.type === 'Box')
-  // One card per story: the lone story, and the story with its sub-tasks.
-  assert.equal(boxes().filter((box) => box.props?.border === true).length, 2)
-  assert.equal(boxes().filter((box) => box.props?.border === 'accent').length, 0)
+  // One card per story, set apart by its background: the lone story, and the story with its sub-tasks.
+  assert.equal(boxes().filter((box) => box.props?.background === 'muted').length, 2)
+  assert.equal(boxes().filter((box) => box.props?.background === 'accent').length, 0)
 
   await view.press({ type: 'ListItem', text: /First sub-task/ })
-  const frames = boxes().filter((box) => box.props?.border === 'accent')
+  const frames = boxes().filter((box) => box.props?.background === 'accent')
   assert.equal(frames.length, 1)
   const framed = words(frames[0])
   // The selected row and its details, and nothing else.
   assert.match(framed, /First sub-task/)
   assert.match(framed, /Open in Shortcut/)
   assert.ok(!/Lone story/.test(framed), 'only the selected row is framed')
+  await view.unmount()
+})
+
+test("the focused worktree's sub-task gets its own tint and Orca's current highlight, without opening", async () => {
+  const view = await mount(panel, { host: linkedHost() })
+  const tinted = nodes(view).filter((node) => node.type === 'Box' && node.props?.background === 'success')
+  assert.equal(tinted.length, 1)
+  assert.match(words(tinted[0]), /Focused work/)
+  assert.deepEqual(rows(view).map((row) => row.current), [true, false, false])
+  // Focus marks where you are; it does not open the row's details.
+  assert.equal(view.find({ text: 'Open worktree' }), null)
+
+  // Selecting the focused row: its details open on the selection tint, which takes over.
+  await view.press({ type: 'ListItem', text: /Focused work/ })
+  const boxes = nodes(view).filter((node) => node.type === 'Box')
+  assert.equal(boxes.filter((box) => box.props?.background === 'success').length, 0)
+  assert.match(words(boxes.find((box) => box.props?.background === 'accent')), /Open worktree/)
+  await view.unmount()
+})
+
+test('the Worktrees tab tints the focused worktree too', async () => {
+  const view = await mount(panel, { host: linkedHost() })
+  await view.select({ label: 'View' }, 'worktrees')
+  // Tabs keep the hidden Stories tab in the tree, with its own tint: find the Worktrees row's,
+  // whose second line names the branch.
+  const tinted = nodes(view).filter((node) => node.type === 'Box' && node.props?.background === 'success')
+  assert.equal(tinted.filter((box) => /ada\/sc-11\/work/.test(words(box))).length, 1)
   await view.unmount()
 })

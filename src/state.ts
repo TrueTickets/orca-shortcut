@@ -107,12 +107,9 @@ export function worktreesChanged(): void {
   }
 }
 
-/** Selects the focused worktree's story, so the list highlights where you are working. */
+/** The focused worktree changed: its sub-task gets Orca's current-row highlight (see StoryRow). */
 export function focusChanged(next: FocusedStory): void {
   set(focus, next)
-  if (next.storyId !== null) {
-    set(selected, keyOf(next.storyId))
-  }
   const current = read(worktrees)
   if (current) {
     set(worktrees, {

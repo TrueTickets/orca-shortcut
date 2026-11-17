@@ -51,7 +51,8 @@ and nothing is stored that could go stale.
   (backlog grey, Ready blue, in progress amber, review and done green).
 - Sub-tasks with a worktree are marked in the Stories tab,
   with the agent status Orca reports,
-  and the focused worktree's sub-task is selected.
+  and the focused worktree's sub-task is highlighted on a green tint,
+  in the Worktrees tab too.
 - The Worktrees tab lists every worktree whose branch names a story,
   whatever the filter.
 - The status bar names the focused worktree's story and its state.

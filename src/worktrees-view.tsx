@@ -12,7 +12,8 @@ import {
   Spinner,
   Stack,
   Text,
-  type IconName
+  type IconName,
+  type OrcaNode
 } from 'orca'
 import type { LinkedWorktree } from './protocol'
 import { keyOf, openWorktree, worktrees, worktreesError } from './state'
@@ -75,6 +76,42 @@ function WorktreeRow({ worktree }: { worktree: LinkedWorktree }) {
   )
 }
 
+/**
+ * The rows, with the focused worktree on a tint of its own, as the Stories tab sets apart its
+ * sub-task. A List holds only rows, so it is split around the focused one.
+ */
+function WorktreeRows({ worktrees: rows }: { worktrees: readonly LinkedWorktree[] }) {
+  const parts: OrcaNode[] = []
+  let plain: LinkedWorktree[] = []
+  const list = (part: readonly LinkedWorktree[], key: string) => (
+    <List key={key} label="Worktrees">
+      {part.map((worktree) => (
+        <WorktreeRow key={worktree.workspaceId} worktree={worktree} />
+      ))}
+    </List>
+  )
+  const flush = () => {
+    if (plain.length > 0) {
+      parts.push(list(plain, `rows-${plain[0].workspaceId}`))
+      plain = []
+    }
+  }
+  for (const worktree of rows) {
+    if (worktree.focused) {
+      flush()
+      parts.push(
+        <Box key={`focused-${worktree.workspaceId}`} radius="md" background="success" padding="xs">
+          {list([worktree], `row-${worktree.workspaceId}`)}
+        </Box>
+      )
+    } else {
+      plain.push(worktree)
+    }
+  }
+  flush()
+  return <Stack gap="xs">{parts}</Stack>
+}
+
 export function WorktreesView() {
   const current = read(worktrees)
   const problem = read(worktreesError)
@@ -102,12 +139,8 @@ export function WorktreesView() {
               (attention > 0 ? ` · ${attention} need${attention === 1 ? 's' : ''} attention` : '')}
           </Text>
           {/* One card, as each story is one in the Stories tab. */}
-          <Box border radius="md" background="card" padding="xs">
-            <List label="Worktrees">
-              {current.worktrees.map((worktree) => (
-                <WorktreeRow key={worktree.workspaceId} worktree={worktree} />
-              ))}
-            </List>
+          <Box radius="md" background="muted" padding="xs" gap="xs">
+            <WorktreeRows worktrees={current.worktrees} />
           </Box>
         </Stack>
       )}

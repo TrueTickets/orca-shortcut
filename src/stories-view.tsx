@@ -147,7 +147,9 @@ function StoryRow({ item, focusedStoryId }: { item: StoryItem; focusedStoryId: n
   return (
     <ListItem
       icon={iconOf(item)}
-      current={read(selected) === key}
+      // Orca's own highlight for the current worktree marks the focused one's sub-task, as in
+      // its left sidebar; selection has its own tint around the row and its details.
+      current={item.id === focusedStoryId}
       onPress={() => toggle(item)}
     >
       <RowText title={item.name} description={descriptionOf(item, focusedStoryId)}>
@@ -174,8 +176,9 @@ function toggle(item: StoryItem): void {
 }
 
 /**
- * Rows, with the selected one's details opened right under it. A List holds only rows and a row
- * holds no buttons, so the list is split around the details.
+ * Rows, with two set apart on a tint of their own: the selected one, with its details opened right
+ * under it (accent), and the focused worktree's sub-task (success). A List holds only rows and a
+ * row holds no buttons, so the list is split around them; the rows between stay one list.
  */
 function Rows({
   label,
@@ -186,30 +189,50 @@ function Rows({
   items: readonly StoryItem[]
   focusedStoryId: number | null
 }) {
-  const open = items.findIndex((item) => keyOf(item.id) === read(selected))
-  const list = (part: readonly StoryItem[], key: string) =>
-    part.length === 0 ? null : (
-      <List key={key} label={label}>
-        {part.map((item) => (
-          <StoryRow key={item.id} item={item} focusedStoryId={focusedStoryId} />
-        ))}
-      </List>
-    )
-  if (open < 0) {
+  const list = (part: readonly StoryItem[], key: string) => (
+    <List key={key} label={label}>
+      {part.map((item) => (
+        <StoryRow key={item.id} item={item} focusedStoryId={focusedStoryId} />
+      ))}
+    </List>
+  )
+  const isSelected = (item: StoryItem) => keyOf(item.id) === read(selected)
+  const isFocused = (item: StoryItem) => item.id === focusedStoryId
+  if (!items.some((item) => isSelected(item) || isFocused(item))) {
     return list(items, 'all')
   }
-  return (
-    <Stack gap="xs">
-      {list(items.slice(0, open), 'above')}
-      {/* The selected row and its details in one accent frame: what is selected, and what the
-          details belong to, read at a glance. */}
-      <Box key="selected" border="accent" radius="md" background="accent" padding="xs" gap="xs">
-        {list([items[open]], 'open')}
-        <StoryDetails story={items[open]} />
-      </Box>
-      {list(items.slice(open + 1), 'below')}
-    </Stack>
-  )
+  const parts: OrcaNode[] = []
+  let plain: StoryItem[] = []
+  const flush = () => {
+    if (plain.length > 0) {
+      parts.push(list(plain, `rows-${plain[0].id}`))
+      plain = []
+    }
+  }
+  for (const item of items) {
+    if (isSelected(item)) {
+      flush()
+      // What is selected, and what the details belong to, read at a glance.
+      parts.push(
+        <Box key={`selected-${item.id}`} radius="md" background="accent" padding="xs" gap="xs">
+          {list([item], `row-${item.id}`)}
+          <StoryDetails story={item} />
+        </Box>
+      )
+    } else if (isFocused(item)) {
+      flush()
+      // Where you are working: the focused worktree's sub-task.
+      parts.push(
+        <Box key={`focused-${item.id}`} radius="md" background="success" padding="xs">
+          {list([item], `row-${item.id}`)}
+        </Box>
+      )
+    } else {
+      plain.push(item)
+    }
+  }
+  flush()
+  return <Stack gap="xs">{parts}</Stack>
 }
 
 /**
@@ -220,13 +243,13 @@ function Group({ group, focusedStoryId }: { group: StoryGroup; focusedStoryId: n
   const { story } = group
   if (group.subtasks.length === 0) {
     return (
-      <Box border radius="md" background="card" padding="xs">
+      <Box radius="md" background="muted" padding="xs">
         <Rows label={story.name} items={[story]} focusedStoryId={focusedStoryId} />
       </Box>
     )
   }
   return (
-    <Box border radius="md" background="card" padding="xs" gap="xs">
+    <Box radius="md" background="muted" padding="xs" gap="xs">
       <Box direction="row" justify="between" gap="sm" paddingX="xs" paddingY="xs">
         <Box grow shrink minWidth={0}>
           <Text weight="semibold" size="sm" truncate>

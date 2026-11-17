@@ -1,6 +1,6 @@
 // work.options and work.start through the worker: a fake Orca host, a fake Shortcut answering by
 // URL, and a fake git. Every name, story and branch here is made up.
-import { afterEach, assert, mockHost, mountWorker, test } from 'orca/testing'
+import { afterEach, assert, hostError, mockHost, mountWorker, test } from 'orca/testing'
 import type { GitRunner } from './git-branch'
 import type { FetchLike } from './shortcut-api'
 import * as main from './worker'
@@ -147,37 +147,42 @@ test('offers git projects, the sibling worktree project first, the branch and ag
   await worker.deactivate()
 })
 
-test('starts work: worktree, Shortcut branch, sub-task and story moved, agent started', async () => {
+test('starts work: worktree with its agent, Shortcut branch, sub-task and story moved', async () => {
   const puts = fakeShortcut()
   const ran = fakeGit()
   const h = host()
   const worker = await mountWorker(main, { host: h })
   const result = await worker.request('work.start', { storyId: 11, projectId: 'p-engine', agent: 'claude' })
 
-  assert.deepEqual(h.callsOf('workspace.create'), [
-    { projectId: 'p-engine', hostId: 'local', name: 'Lay out the operation cards', open: true }
-  ])
+  // The agent starts with the worktree, in its own terminal, as Orca's new-worktree dialog does.
+  const [create] = h.callsOf('workspace.create') as Record<string, string>[]
+  const { prompt, ...rest } = create
+  assert.deepEqual(rest, {
+    projectId: 'p-engine',
+    hostId: 'local',
+    name: 'Lay out the operation cards',
+    open: true,
+    agent: 'claude'
+  })
+  assert.match(prompt, /^Work on Shortcut sub-task sc-11: Lay out the operation cards/)
+  assert.match(prompt, /The big picture\./)
+  // No second terminal for the agent.
+  assert.deepEqual(h.callsOf('agent.launch'), [])
+
   assert.equal(ran.at(-1), 'branch -m ada/sc-11/lay-out-the-operation-cards')
   assert.deepEqual(puts, [
     { id: 11, body: { workflow_state_id: 104, owner_ids: ['someone', 'member-ada'] } },
     { id: 10, body: { workflow_state_id: 103 } }
   ])
-  const [launch] = h.callsOf('agent.launch') as { workspaceId: string; agent: string; prompt: string }[]
-  assert.equal(launch.workspaceId, 'new')
-  assert.equal(launch.agent, 'claude')
-  assert.match(launch.prompt, /^Work on Shortcut sub-task sc-11: Lay out the operation cards/)
-  assert.match(launch.prompt, /The big picture\./)
-
   assert.deepEqual(result, {
     workspaceId: 'new',
     branch: 'ada/sc-11/lay-out-the-operation-cards',
     existing: false,
     done: [
-      'Created a worktree in engine.',
+      'Created a worktree in engine and started claude in it.',
       'Put the worktree on ada/sc-11/lay-out-the-operation-cards.',
       'Shortcut sc-11: moved to In Development (Sub-tasks), added you as an owner.',
-      'Shortcut sc-10: moved to In Progress (Stories).',
-      'Started claude on it.'
+      'Shortcut sc-10: moved to In Progress (Stories).'
     ],
     warnings: []
   })
@@ -268,6 +273,59 @@ test('refuses a project that is not a Git project', async () => {
   await assert.rejects(
     worker.request('work.start', { storyId: 11, projectId: 'p-notes', agent: null }),
     /Pick a Git project/
+  )
+  await worker.deactivate()
+})
+
+test('an agent that fails after its worktree exists leaves the worktree, and work goes on', async () => {
+  const puts = fakeShortcut()
+  const ran = fakeGit()
+  let created = false
+  const h = mockHost({
+    results: {
+      'secrets.protection': { status: 'os-keyring' },
+      'project.list': PROJECTS,
+      'workspace.list': () => ({
+        truncated: false,
+        workspaces: created ? [listed('new', 'ada/lay-out-the-operation-cards')] : []
+      }),
+      // Orca made the worktree, then the agent failed: the call fails, naming the worktree.
+      'workspace.create': () => {
+        created = true
+        throw hostError('action_failed', 'agent failed to start in workspace new')
+      }
+    },
+    secrets: { shortcutToken: 'tok' },
+    storage: { member: { name: 'Ada', mentionName: 'ada', workspaceName: 'Engines' } }
+  })
+  const worker = await mountWorker(main, { host: h })
+  const result = await worker.request('work.start', { storyId: 11, projectId: 'p-engine', agent: 'codex' })
+  assert.equal(result.workspaceId, 'new')
+  assert.equal(result.done[0], 'Created a worktree in engine.')
+  assert.match(result.warnings[0], /^Could not start codex: agent failed to start/)
+  assert.equal(ran.at(-1), 'branch -m ada/sc-11/lay-out-the-operation-cards')
+  assert.equal(puts.length, 2)
+  await worker.deactivate()
+})
+
+test('a failed create with no new worktree is the answer', async () => {
+  fakeShortcut()
+  const h = mockHost({
+    results: {
+      'secrets.protection': { status: 'os-keyring' },
+      'project.list': PROJECTS,
+      'workspace.list': { truncated: false, workspaces: [] },
+      'workspace.create': () => {
+        throw hostError('action_failed', "this project's setup script needs a decision")
+      }
+    },
+    secrets: { shortcutToken: 'tok' },
+    storage: { member: { name: 'Ada', mentionName: 'ada', workspaceName: 'Engines' } }
+  })
+  const worker = await mountWorker(main, { host: h })
+  await assert.rejects(
+    worker.request('work.start', { storyId: 11, projectId: 'p-engine', agent: 'claude' }),
+    /setup script needs a decision/
   )
   await worker.deactivate()
 })

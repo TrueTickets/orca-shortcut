@@ -75,7 +75,9 @@ an agent, and the branch it will use. **Start work** then:
 3. moves the sub-task to **Started sub-task state**
    and its story to **Started story state** if the story has not started,
    never moving either back, and adds you as an owner;
-4. starts the agent with the sub-task and its story as its prompt,
+4. with an agent, starts it in the worktree's own terminal once setup has run,
+   as Orca's new-worktree dialog does,
+   with the sub-task and its story as its prompt,
    their descriptions marked as data, not instructions.
 
 A sub-task that already has a worktree opens it instead.

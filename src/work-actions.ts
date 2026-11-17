@@ -118,14 +118,51 @@ export async function startWork(
   const done: string[] = []
   const warnings: string[] = []
 
-  // 1. The worktree, named after the sub-task as Orca's sidebar shows it.
-  const { workspaceId } = await orca.host.call('workspace.create', {
-    projectId: project.id,
-    ...(project.hostId ? { hostId: project.hostId } : {}),
-    name: subtask.name.slice(0, 80),
-    open: true
-  })
-  done.push(`Created a worktree in ${project.name}.`)
+  // The parent story, for Shortcut and for the agent's prompt; work goes on without it.
+  const parent =
+    subtask.parentStoryId === null
+      ? null
+      : await ctx.client.getStory(subtask.parentStoryId).catch((error: unknown) => {
+          warnings.push(`Could not read story sc-${subtask.parentStoryId}: ${String(error)}`)
+          return null
+        })
+
+  // 1. The worktree, named after the sub-task as Orca's sidebar shows it. With an agent, Orca
+  // starts it in the worktree's own terminal once setup has run, as its new-worktree dialog does.
+  // The branch is renamed just after: an agent's CLI takes seconds to start, the rename
+  // milliseconds, so the agent finds the Shortcut branch.
+  const known = new Set(
+    (await orca.host.call('workspace.list')).workspaces.map((workspace) => workspace.id)
+  )
+  let workspaceId: string
+  try {
+    ;({ workspaceId } = await orca.host.call('workspace.create', {
+      projectId: project.id,
+      ...(project.hostId ? { hostId: project.hostId } : {}),
+      name: subtask.name.slice(0, 80),
+      open: true,
+      ...(input.agent ? { agent: input.agent, prompt: buildAgentPrompt(subtask, parent) } : {})
+    }))
+    done.push(
+      input.agent
+        ? `Created a worktree in ${project.name} and started ${input.agent} in it.`
+        : `Created a worktree in ${project.name}.`
+    )
+  } catch (error) {
+    // An agent that fails after the worktree exists fails the call; the worktree stays, so carry on
+    // with it. Without an agent, or with no new worktree, the failure is the answer.
+    const made = input.agent
+      ? (await orca.host.call('workspace.list')).workspaces.find(
+          (workspace) => !known.has(workspace.id) && workspace.projectId === project.id
+        )
+      : undefined
+    if (!made) {
+      throw error
+    }
+    workspaceId = made.id
+    done.push(`Created a worktree in ${project.name}.`)
+    warnings.push(`Could not start ${input.agent}: ${error instanceof Error ? error.message : String(error)}`)
+  }
   await orca.storage.set(LAST_PROJECT, project.id)
 
   // 2. The Shortcut branch.
@@ -150,15 +187,6 @@ export async function startWork(
       warnings.push(error instanceof GitError ? error.message : `Branch: ${String(error)}`)
     }
   }
-
-  // The parent story, for Shortcut and for the agent's prompt; work goes on without it.
-  const parent =
-    subtask.parentStoryId === null
-      ? null
-      : await ctx.client.getStory(subtask.parentStoryId).catch((error: unknown) => {
-          warnings.push(`Could not read story sc-${subtask.parentStoryId}: ${String(error)}`)
-          return null
-        })
 
   // 3. Shortcut: the sub-task and its story move along; the person owns the sub-task.
   try {
@@ -187,20 +215,6 @@ export async function startWork(
     warnings.push(...notes)
   } catch (error) {
     warnings.push(`Could not update Shortcut: ${String(error)}`)
-  }
-
-  // 4. The agent, once the branch and Shortcut are in place.
-  if (input.agent) {
-    try {
-      await orca.host.call('agent.launch', {
-        workspaceId,
-        agent: input.agent,
-        prompt: buildAgentPrompt(subtask, parent)
-      })
-      done.push(`Started ${input.agent} on it.`)
-    } catch (error) {
-      warnings.push(`Could not start ${input.agent}: ${String(error)}`)
-    }
   }
 
   orca.panels.post('worktrees.changed', null)

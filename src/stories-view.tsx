@@ -249,18 +249,34 @@ function Group({ group, focusedStoryId }: { group: StoryGroup; focusedStoryId: n
       </Box>
     )
   }
+  // The header is a row too, so the story can be opened: its details hold Create sub-task and
+  // Open in Shortcut. It opens on the selection tint, above the story's sub-tasks.
+  const header = (
+    <List label={story.name}>
+      <ListItem icon="book" onPress={() => toggle(story)}>
+        <Box direction="row" justify="between" gap="sm">
+          <Box grow shrink minWidth={0}>
+            <Text weight="semibold" size="sm" truncate>
+              {story.name}
+            </Text>
+          </Box>
+          <Box shrink={false}>
+            <StatePill item={story} />
+          </Box>
+        </Box>
+      </ListItem>
+    </List>
+  )
   return (
     <Box radius="md" background="muted" padding="xs" gap="xs">
-      <Box direction="row" justify="between" gap="sm" paddingX="xs" paddingY="xs">
-        <Box grow shrink minWidth={0}>
-          <Text weight="semibold" size="sm" truncate>
-            {story.name}
-          </Text>
+      {keyOf(story.id) === read(selected) ? (
+        <Box radius="md" background="accent" padding="xs" gap="xs">
+          {header}
+          <StoryDetails story={story} />
         </Box>
-        <Box shrink={false}>
-          <StatePill item={story} />
-        </Box>
-      </Box>
+      ) : (
+        header
+      )}
       <Separator />
       <Rows label={story.name} items={group.subtasks} focusedStoryId={focusedStoryId} />
     </Box>

@@ -121,7 +121,7 @@ function rows(view: View) {
   const texts = view.findAll({ type: 'Text' })
   // An element belongs to the row whose path its own path extends.
   const inRow = (row: Element) => (element: Element) => element.path.startsWith(`${row.path}/`)
-  return view.findAll({ type: 'ListItem' }).map((row: Element) => {
+  const all = view.findAll({ type: 'ListItem' }).map((row: Element) => {
     // The row draws its own two lines (see RowText): the title, then the second line.
     const [title, description] = texts.filter(inRow(row)).map((text: Element) => text.text)
     return {
@@ -134,6 +134,18 @@ function rows(view: View) {
         .map((badge: Element) => `${(badge.props?.tone as string) ?? 'neutral'}:${badge.text}`)
     }
   })
+  // A story header is a one-line row; stories and sub-tasks in a list have a second line.
+  return all.filter((row) => row.description !== undefined)
+}
+
+/** The story headers: one-line rows, each opening its story's details. */
+function headers(view: View): string[] {
+  const texts = view.findAll({ type: 'Text' })
+  return view
+    .findAll({ type: 'ListItem' })
+    .map((row: Element) => texts.filter((text: Element) => text.path.startsWith(`${row.path}/`)))
+    .filter((lines) => lines.length === 1)
+    .map((lines) => lines[0].text)
 }
 
 test('lists sub-tasks under a header for their story, as Orca lists worktrees', async () => {
@@ -662,5 +674,21 @@ test('says why a sub-task could not be created, keeping the title', async () => 
   await view.press({ type: 'Button', text: 'Create sub-task' })
   assert.ok(view.find({ text: 'Shortcut takes titles of at most 512 characters.' }))
   assert.equal(view.valueOf({ label: 'New sub-task' }), 'Too long')
+  await view.unmount()
+})
+
+test('a story header opens the story, with Create sub-task, above its sub-tasks', async () => {
+  const host = mockHost({ requests: { 'auth.status': connected, 'stories.list': list } })
+  const view = await mount(panel, { host })
+  assert.deepEqual(headers(view), ['Parent story'])
+  await view.press({ type: 'ListItem', text: /Parent story/ })
+  const frame = nodes(view).find((node) => node.type === 'Box' && node.props?.background === 'accent')
+  const framed = words(frame)
+  assert.match(framed, /Parent story/)
+  assert.match(framed, /Create sub-task/)
+  // The sub-tasks stay outside the story's details.
+  assert.ok(!/First sub-task/.test(framed))
+  await view.press({ type: 'ListItem', text: /Parent story/ })
+  assert.equal(view.find({ type: 'Button', text: 'Create sub-task' }), null)
   await view.unmount()
 })

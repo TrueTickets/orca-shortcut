@@ -9,6 +9,7 @@ import type {
   FocusedStory,
   StoryFilter,
   StoryList,
+  StorySearch,
   WorktreeList,
   WorktreeRef
 } from './protocol'
@@ -155,13 +156,31 @@ async function listStories(
     worktreeIndex(orca)
   ])
 
-  const matches = new Map<number, ShortcutStory>()
-  for (const search of searches) {
-    for (const story of search.stories) {
-      matches.set(story.id, story)
-    }
+  return {
+    filter,
+    states: workflowStateOptions(workflowStates),
+    groups: await groupStories(
+      orca,
+      client,
+      searches.flatMap((search) => search.stories),
+      workflowStates,
+      worktrees,
+      signal
+    ),
+    truncated: searches.some((search) => search.truncated)
   }
+}
 
+/** Matching stories under their parent story, fetching parents that did not match themselves. */
+async function groupStories(
+  orca: OrcaWorkerApi,
+  client: ShortcutClient,
+  stories: readonly ShortcutStory[],
+  workflowStates: Awaited<ReturnType<ShortcutClient['listWorkflowStates']>>,
+  worktrees: Map<number, WorktreeRef[]>,
+  signal?: AbortSignal
+) {
+  const matches = new Map(stories.map((story) => [story.id, story]))
   // Parents that did not match themselves, such as a story someone else owns.
   const missing = [
     ...new Set(
@@ -171,12 +190,45 @@ async function listStories(
     )
   ]
   const parents = await fetchStories(orca, client, missing, 'parent story', signal)
+  return buildStoryGroups([...matches.values()], parents, workflowStates, worktrees)
+}
 
+/** A story id on its own, as `123` or `sc-123`. */
+const STORY_ID = /^\s*(?:sc-)?(\d+)\s*$/i
+
+/** Searches all of Shortcut; a bare story id fetches that story instead. */
+async function searchStories(
+  orca: OrcaWorkerApi,
+  query: string,
+  signal: AbortSignal
+): Promise<StorySearch> {
+  const trimmed = query.trim()
+  if (!trimmed) {
+    throw codedError('invalid_params', 'Type something to search for.')
+  }
+  const { client } = await connectedClient(orca)
+  const id = STORY_ID.exec(trimmed)?.[1]
+  const found = id
+    ? client.getStory(Number(id), signal).then(
+        (story) => ({ stories: story.archived ? [] : [story], truncated: false }),
+        // An id Shortcut does not know is no match, not a failure.
+        (error: unknown) => {
+          if (/answered 404 /.test(String((error as Error).message))) {
+            return { stories: [], truncated: false }
+          }
+          throw error
+        }
+      )
+    : client.searchStories(`${trimmed} !is:archived`, { maxPages: 2, signal })
+  const [{ stories, truncated }, workflowStates, worktrees] = await Promise.all([
+    found,
+    client.listWorkflowStates(signal),
+    worktreeIndex(orca)
+  ])
   return {
-    filter,
-    states: workflowStateOptions(workflowStates),
-    groups: buildStoryGroups([...matches.values()], parents, workflowStates, worktrees),
-    truncated: searches.some((search) => search.truncated)
+    query: trimmed,
+    groups: await groupStories(orca, client, stories, workflowStates, worktrees, signal),
+    truncated
   }
 }
 
@@ -259,6 +311,9 @@ export default function activate(orca: OrcaWorkerApi): void {
   orca.panels.handle('focus.get', () => focus)
   orca.panels.handle('stories.list', (input, { signal }) =>
     listStories(orca, input?.filter, signal)
+  )
+  orca.panels.handle('stories.search', ({ query }, { signal }) =>
+    searchStories(orca, query, signal)
   )
   orca.panels.handle('worktrees.list', (_input, { signal }) =>
     listWorktrees(orca, focus.branch, signal)

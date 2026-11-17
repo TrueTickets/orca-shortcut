@@ -198,3 +198,43 @@ test('needs a connection', async () => {
   })
   await worker.deactivate()
 })
+
+// ---- stories.search ----
+
+test('searches all of Shortcut, leaving out archived stories, grouped under parents', async () => {
+  fakeShortcut({
+    search: {
+      'difference engine !is:archived': [[raw(21, { parent_story_id: 20, workflow_state_id: 104 }), raw(40)]]
+    },
+    stories: { 20: raw(20, { sub_task_story_ids: [21] }) }
+  })
+  const worker = await mountWorker(main, { host: mockHost(connected) })
+  const found = await worker.request('stories.search', { query: '  difference engine ' })
+  assert.equal(found.query, 'difference engine')
+  assert.equal(found.truncated, false)
+  assert.deepEqual(
+    found.groups.map((group) => [group.story.id, group.matched, group.subtasks.map((s) => [s.id, s.state])]),
+    [
+      [40, true, []],
+      [20, false, [[21, 'Complete']]]
+    ]
+  )
+  await worker.deactivate()
+})
+
+test('a story id fetches that story; an unknown or archived one finds nothing', async () => {
+  const asked = fakeShortcut({
+    search: {},
+    stories: { 21: raw(21, { parent_story_id: 20 }), 20: raw(20), 22: raw(22, { archived: true }) }
+  })
+  const worker = await mountWorker(main, { host: mockHost(connected) })
+  for (const query of ['21', 'sc-21', 'SC-21']) {
+    const found = await worker.request('stories.search', { query })
+    assert.deepEqual(found.groups.map((group) => [group.story.id, group.subtasks.map((s) => s.id)]), [[20, [21]]])
+  }
+  assert.ok(!asked.some((url) => url.includes('/search/')))
+  assert.deepEqual((await worker.request('stories.search', { query: 'sc-99' })).groups, [])
+  assert.deepEqual((await worker.request('stories.search', { query: '22' })).groups, [])
+  await assert.rejects(worker.request('stories.search', { query: '  ' }), /Type something to search for/)
+  await worker.deactivate()
+})

@@ -14,6 +14,12 @@ declare module 'orca' {
      * `defaultStates` and `defaultOwner` settings apply; the answer says which filter ran.
      */
     'stories.list': { input: { filter?: StoryFilter }; output: StoryList }
+    /**
+     * Stories anywhere in Shortcut, whatever their state or owner, grouped as `stories.list`
+     * groups them. `query` is Shortcut search syntax, or a story id (`123` or `sc-123`).
+     * Archived stories are left out.
+     */
+    'stories.search': { input: { query: string }; output: StorySearch }
     /** Every worktree whose branch names a story, with that story and what is off. */
     'worktrees.list': { output: WorktreeList }
     /** The focused worktree's branch and story, as last reported by Orca. */
@@ -179,4 +185,11 @@ export type MovedStory = {
   /** The workflow state it is in now, and that state's type. */
   state: string
   stateType: string
+}
+
+export type StorySearch = {
+  query: string
+  groups: StoryGroup[]
+  /** True when Shortcut had more matches than the plugin fetched. */
+  truncated: boolean
 }

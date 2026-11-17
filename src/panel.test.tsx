@@ -809,3 +809,87 @@ test('offers no picker without later states, and says why a move failed', async 
   assert.ok(view.find({ text: /can only move forward from Complete/ }))
   await view.unmount()
 })
+
+// ---- Search ----
+
+/** Two stories, one with two sub-tasks, to narrow. */
+const searchable: StoryList = {
+  ...list,
+  groups: [
+    { story: storyItem(30, { name: 'Lone story' }), matched: true, subtasks: [] },
+    {
+      story: storyItem(10, { name: 'Parent story', subTaskCount: 2 }),
+      matched: false,
+      subtasks: [
+        storyItem(11, { name: 'Punch the cards', parentId: 10 }),
+        storyItem(12, { name: 'Print the tables', parentId: 10 })
+      ]
+    }
+  ]
+}
+
+const titles = (view: View) => [...headers(view), ...rows(view).map((row) => row.title)]
+
+test('typing narrows the list by title or id, keeping a sub-task under its story', async () => {
+  const host = mockHost({ requests: { 'auth.status': connected, 'stories.list': searchable } })
+  const view = await mount(panel, { host })
+  await view.type({ label: 'Search stories' }, 'print')
+  assert.deepEqual(titles(view), ['Parent story', 'Print the tables'])
+  await view.type({ label: 'Search stories' }, 'sc-30', { replace: true })
+  assert.deepEqual(titles(view), ['Lone story'])
+  // A matching story keeps all its sub-tasks; a bare number matches the id.
+  await view.type({ label: 'Search stories' }, '10', { replace: true })
+  assert.deepEqual(titles(view), ['Parent story', 'Punch the cards', 'Print the tables'])
+  await view.type({ label: 'Search stories' }, 'nothing like it', { replace: true })
+  assert.match(String(view.find({ type: 'EmptyState' })?.props?.description), /Press Enter to search all of Shortcut/)
+  await view.press({ label: 'Clear search' })
+  assert.equal(titles(view).length, 4)
+  await view.unmount()
+})
+
+test('Enter searches all of Shortcut in place of the list, until cleared', async () => {
+  const sent: unknown[] = []
+  const host = mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': searchable,
+      'stories.search': (input: { query: string }) => {
+        sent.push(input)
+        return {
+          query: input.query,
+          truncated: false,
+          groups: [{ story: storyItem(50, { name: 'Someone else’s engine', state: 'Complete', stateType: 'done' }), matched: true, subtasks: [] }]
+        }
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.type({ label: 'Search stories' }, 'engine', { submit: true })
+  assert.deepEqual(sent, [{ query: 'engine' }])
+  assert.ok(view.find({ text: 'All of Shortcut · 1 match' }))
+  assert.deepEqual(titles(view), ['Someone else’s engine'])
+  // The filters are for the list, not for Shortcut's results.
+  assert.equal(view.find({ label: 'Filters' }), null)
+
+  await view.press({ type: 'Button', text: 'Back to my list' })
+  assert.equal(view.valueOf({ label: 'Search stories' }), '')
+  assert.equal(titles(view).length, 4)
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('typing after a Shortcut search goes back to narrowing the list', async () => {
+  const host = mockHost({
+    requests: {
+      'auth.status': connected,
+      'stories.list': searchable,
+      'stories.search': { query: 'engine', truncated: false, groups: [] }
+    }
+  })
+  const view = await mount(panel, { host })
+  await view.type({ label: 'Search stories' }, 'engine', { submit: true })
+  assert.equal(view.find({ type: 'EmptyState' })?.props?.description, 'Nothing in Shortcut matches "engine".')
+  await view.type({ label: 'Search stories' }, 'punch', { replace: true })
+  assert.deepEqual(titles(view), ['Parent story', 'Punch the cards'])
+  await view.unmount()
+})

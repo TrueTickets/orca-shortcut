@@ -1,7 +1,15 @@
 // The panel's state and the requests that fill it. Every view reads these atoms; only the
 // worker talks to Shortcut and Orca's workspaces.
 import { atom, plugin, read, set } from 'orca'
-import type { AuthStatus, FocusedStory, StoryFilter, StoryList, WorktreeList } from './protocol'
+import type {
+  AuthStatus,
+  FocusedStory,
+  StoryFilter,
+  StoryGroup,
+  StoryList,
+  StorySearch,
+  WorktreeList
+} from './protocol'
 
 /** What the worker last reported; null until it answers. */
 export const auth = atom<AuthStatus | null>(null)
@@ -22,6 +30,13 @@ export const selected = atom<string | null>(null)
 /** Stories whose sub-tasks are folded away, by id; remembered across panel runs. */
 export const collapsed = atom<readonly number[]>('collapsed', [], { persist: 'plugin' })
 
+/** What is typed in the search box: it narrows the list as it is typed. */
+export const query = atom('')
+/** All of Shortcut searched for a query (on Enter); shown in place of the list until cleared. */
+export const searchResults = atom<StorySearch | null>(null)
+export const searching = atom(false)
+export const searchError = atom<string | null>(null)
+
 export const worktrees = atom<WorktreeList | null>(null)
 export const worktreesLoading = atom(false)
 export const worktreesError = atom<string | null>(null)
@@ -40,6 +55,7 @@ const connected = (): boolean => read(auth)?.connected === true
 /** Only the newest request of a kind may draw: an older answer arriving late is dropped. */
 let storiesRequest = 0
 let worktreesRequest = 0
+let searchRequest = 0
 
 export async function loadStories(): Promise<void> {
   if (!connected()) {
@@ -64,6 +80,70 @@ export async function loadStories(): Promise<void> {
       set(listLoading, false)
     }
   }
+  // Shortcut results on show are stale for the same reason the list was.
+  const shown = read(searchResults)
+  if (shown) {
+    await searchShortcut(shown.query)
+  }
+}
+
+/** Searches all of Shortcut for `text`; its results replace the list until the query changes. */
+export async function searchShortcut(text: string): Promise<void> {
+  if (!connected() || !text.trim()) {
+    return
+  }
+  const request = ++searchRequest
+  set(searching, true)
+  set(searchError, null)
+  try {
+    const answer = await plugin.request('stories.search', { query: text })
+    if (request === searchRequest) {
+      set(searchResults, answer)
+    }
+  } catch (reason) {
+    if (request === searchRequest) {
+      set(searchError, messageOf(reason))
+    }
+  } finally {
+    if (request === searchRequest) {
+      set(searching, false)
+    }
+  }
+}
+
+/** Typing narrows the list; Shortcut results for an earlier query no longer apply. */
+export function changeQuery(text: string): void {
+  set(query, text)
+  set(searchError, null)
+  if (read(searchResults)?.query !== text.trim()) {
+    ++searchRequest
+    set(searchResults, null)
+    set(searching, false)
+  }
+}
+
+export function clearSearch(): void {
+  changeQuery('')
+}
+
+/**
+ * The groups that match `text`, by title or id (`sc-12`, `12`): a matching story keeps all its
+ * sub-tasks; otherwise a story stays, as their context, with only its matching sub-tasks.
+ */
+export function narrowGroups(groups: readonly StoryGroup[], text: string): StoryGroup[] {
+  const needle = text.trim().toLowerCase()
+  if (!needle) {
+    return [...groups]
+  }
+  const matches = (item: { id: number; name: string }) =>
+    item.name.toLowerCase().includes(needle) || keyOf(item.id).includes(needle.replace(/^(?=\d)/, 'sc-'))
+  return groups.flatMap((group) => {
+    if (matches(group.story)) {
+      return [group]
+    }
+    const subtasks = group.subtasks.filter(matches)
+    return subtasks.length > 0 ? [{ ...group, subtasks }] : []
+  })
 }
 
 export async function loadWorktrees(): Promise<void> {
@@ -131,6 +211,7 @@ export function setAuth(status: AuthStatus): void {
   }
   if (!status.connected) {
     set(list, null)
+    set(searchResults, null)
     set(worktrees, null)
     set(selected, null)
   }

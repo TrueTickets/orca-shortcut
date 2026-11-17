@@ -2,7 +2,7 @@
 // is otherwise a dead end; once created, the sub-task opens with its Start work form ready.
 import { atom, Button, Callout, Input, plugin, read, Row, set, Stack, Text } from 'orca'
 import type { CreatedSubtask, StoryItem } from './protocol'
-import { keyOf, list, loadStories, messageOf, selected } from './state'
+import { keyOf, list, loadStories, messageOf, searchResults, selected } from './state'
 import { prepareStartWork } from './start-work-view'
 
 /** The title being typed, for the story it is typed for. */
@@ -11,8 +11,9 @@ const creating = atom<number | null>(null)
 const created = atom<(CreatedSubtask & { parentId: number; shown: boolean }) | null>(null)
 const failure = atom<{ parentId: number; message: string } | null>(null)
 
+/** Whether the list, or the Shortcut results shown in its place, holds story `id`. */
 function shownInList(id: number): boolean {
-  return (read(list)?.groups ?? []).some(
+  return (read(searchResults)?.groups ?? read(list)?.groups ?? []).some(
     (group) => group.story.id === id || group.subtasks.some((subtask) => subtask.id === id)
   )
 }

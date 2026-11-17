@@ -10,6 +10,7 @@ import {
   Collapsible,
   EmptyState,
   IconButton,
+  Input,
   List,
   ListItem,
   read,
@@ -26,14 +27,22 @@ import {
 } from 'orca'
 import type { StoryFilter, StoryGroup, StoryItem, StoryList, StoryOwner } from './protocol'
 import {
+  changeQuery,
   chosenFilter,
+  clearSearch,
   collapsed,
   focus,
   keyOf,
   list,
   listError,
   loadStories,
+  narrowGroups,
   openWorktree,
+  query,
+  searchError,
+  searching,
+  searchResults,
+  searchShortcut,
   selected
 } from './state'
 import { shortStateName, toneOfState } from './state-tone'
@@ -415,6 +424,70 @@ function StoryDetails({ story }: { story: StoryItem }) {
   )
 }
 
+/** Narrows the list as it is typed; Enter searches all of Shortcut. */
+function SearchBox() {
+  const text = read(query)
+  return (
+    <Row gap="xs">
+      <Box grow shrink minWidth={0}>
+        <Input
+          label="Search stories"
+          labelHidden
+          type="search"
+          placeholder="Search, Enter for all of Shortcut"
+          value={text}
+          onChange={changeQuery}
+          onSubmit={(value) => void searchShortcut(value)}
+        />
+      </Box>
+      {text ? <IconButton icon="close" label="Clear search" onPress={clearSearch} /> : null}
+    </Row>
+  )
+}
+
+function Groups({ groups, focusedStoryId }: { groups: readonly StoryGroup[]; focusedStoryId: number | null }) {
+  return (
+    <Box gap="md">
+      {groups.map((group) => (
+        <Group key={group.story.id} group={group} focusedStoryId={focusedStoryId} />
+      ))}
+    </Box>
+  )
+}
+
+/** All of Shortcut searched, in place of the list; the filters do not apply. */
+function ShortcutResults({ focusedStoryId }: { focusedStoryId: number | null }) {
+  const results = read(searchResults)
+  if (!results) {
+    return null
+  }
+  const count = results.groups.reduce((total, group) => total + 1 + group.subtasks.length, 0)
+  return (
+    <Stack gap="md">
+      <Row justify="between">
+        <Text size="xs" muted>
+          {`All of Shortcut · ${results.groups.length === 0 ? 'no' : count} match${count === 1 ? '' : 'es'}`}
+        </Text>
+        <Button variant="ghost" onPress={clearSearch}>
+          Back to my list
+        </Button>
+      </Row>
+      {results.truncated ? (
+        <Callout tone="warning">Shortcut has more matches than shown: search for something narrower.</Callout>
+      ) : null}
+      {results.groups.length === 0 ? (
+        <EmptyState
+          title="No stories"
+          description={`Nothing in Shortcut matches "${results.query}".`}
+          icon="search"
+        />
+      ) : (
+        <Groups groups={results.groups} focusedStoryId={focusedStoryId} />
+      )}
+    </Stack>
+  )
+}
+
 export function StoriesView() {
   const current = read(list)
   const problem = read(listError)
@@ -422,21 +495,42 @@ export function StoriesView() {
     return problem ? <Callout tone="danger">{problem}</Callout> : <Spinner label="Loading stories" />
   }
   const focusedStoryId = read(focus).storyId
+  const text = read(query).trim()
+  const failed = read(searchError)
+  const header = (
+    <>
+      <SearchBox />
+      {read(searching) ? <Spinner label="Searching Shortcut" /> : null}
+      {failed ? <Callout tone="danger">{failed}</Callout> : null}
+    </>
+  )
+  if (read(searchResults)) {
+    return (
+      <Stack gap="md">
+        {header}
+        <ShortcutResults focusedStoryId={focusedStoryId} />
+      </Stack>
+    )
+  }
+  const groups = narrowGroups(current.groups, text)
   return (
     <Stack gap="md">
+      {header}
       <Filters current={current} />
       {problem ? <Callout tone="danger">{problem}</Callout> : null}
       {current.truncated ? (
         <Callout tone="warning">Some states have more stories than the list shows.</Callout>
       ) : null}
-      {current.groups.length === 0 ? (
-        <EmptyState title="No stories" description="Nothing matches these filters." icon="search" />
+      {groups.length > 0 ? (
+        <Groups groups={groups} focusedStoryId={focusedStoryId} />
+      ) : text ? (
+        <EmptyState
+          title="No matches here"
+          description={`Nothing in this list matches "${text}". Press Enter to search all of Shortcut.`}
+          icon="search"
+        />
       ) : (
-        <Box gap="md">
-          {current.groups.map((group) => (
-            <Group key={group.story.id} group={group} focusedStoryId={focusedStoryId} />
-          ))}
-        </Box>
+        <EmptyState title="No stories" description="Nothing matches these filters." icon="search" />
       )}
     </Stack>
   )

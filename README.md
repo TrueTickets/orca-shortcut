@@ -38,6 +38,18 @@ Each story's sub-tasks are indented under it,
 and its chevron folds them away (remembered too);
 a folded story says how many it hides, and whether you are working in one.
 
+### Search
+
+Typing in the search box narrows the list by title or id (`sc-123`, or just `123`);
+a sub-task stays under its story, and a matching story keeps all its sub-tasks.
+Press Enter to search all of Shortcut instead, whatever the state or owner
+(archived stories are left out).
+The query is Shortcut's own search syntax,
+so quote a phrase (`"print the tables"`) to match it whole;
+a bare id fetches that story.
+Shortcut's results replace the list, without the filters,
+until you clear the search, change it, or press **Back to my list**.
+
 ## Worktrees
 
 A worktree belongs to the story its git branch names:

@@ -118,7 +118,25 @@ test('the agent prompt has no context block without descriptions, and cuts long 
     'Work on Shortcut sub-task sc-11: Story 11\nhttps://app.shortcut.com/engines/story/11'
   )
   const long = buildAgentPrompt(story(11, { description: 'x'.repeat(5000) }), null)
-  assert.match(long, /x{3000}\n\[…cut\]/)
+  assert.match(long, /x{3000}\n\[…cut: the rest is in sc-11 in Shortcut\]/)
+})
+
+test('the story carries the spec: the agent is told to read it, and more of it fits', () => {
+  const prompt = buildAgentPrompt(
+    story(11, { parentStoryId: 10, description: 'PR goes here.' }),
+    story(10, { description: 'y'.repeat(9000) })
+  )
+  assert.match(
+    prompt,
+    /The story describes the work; the sub-task tracks this piece of it and its pull request, and may say little\. Before starting, read story sc-10 in Shortcut, including its comments and tasks/
+  )
+  // The pointer sits before the context block, as an instruction from the plugin, not data.
+  assert.ok(prompt.indexOf('Before starting') < prompt.indexOf('--- BEGIN SHORTCUT CONTEXT ---'))
+  assert.match(prompt, /y{8000}\n\[…cut: the rest is in sc-10 in Shortcut\]/)
+  assert.ok(!/y{8001}/.test(prompt))
+  // A story under the limit is passed whole, and a sub-task without a story gets no pointer.
+  assert.match(buildAgentPrompt(story(11), story(10, { description: 'z'.repeat(7000) })), /z{7000}\n\n--- END/)
+  assert.ok(!/Before starting/.test(buildAgentPrompt(story(11), null)))
 })
 
 test('suggests where sibling sub-tasks have worktrees, then the last project, then the first', () => {

@@ -84,11 +84,16 @@ export function planShortcutUpdates(args: {
 }
 
 /** Longest a description may be in the agent prompt, so a long story cannot crowd out the task. */
-const MAX_DESCRIPTION = 3000
+/** The story carries the spec, so more of it fits; a sub-task's description is usually short. */
+const STORY_MAX = 8000
+const SUBTASK_MAX = 3000
 
-function clip(text: string): string {
+/** A description up to `max` characters; a cut one says where the rest is. */
+function clip(text: string, max: number, storyId: number): string {
   const trimmed = text.trim()
-  return trimmed.length > MAX_DESCRIPTION ? `${trimmed.slice(0, MAX_DESCRIPTION)}\n[…cut]` : trimmed
+  return trimmed.length > max
+    ? `${trimmed.slice(0, max)}\n[…cut: the rest is in sc-${storyId} in Shortcut]`
+    : trimmed
 }
 
 /**
@@ -99,14 +104,23 @@ function clip(text: string): string {
 export function buildAgentPrompt(subtask: ShortcutStory, parent: ShortcutStory | null): string {
   const lines = [`Work on Shortcut sub-task sc-${subtask.id}: ${subtask.name}`, subtask.appUrl]
   if (parent) {
-    lines.push('', `It belongs to story sc-${parent.id}: ${parent.name}`, parent.appUrl)
+    lines.push(
+      '',
+      `It belongs to story sc-${parent.id}: ${parent.name}`,
+      parent.appUrl,
+      '',
+      // Sub-tasks are often placeholders that a pull request links to; the story has the spec.
+      `The story describes the work; the sub-task tracks this piece of it and its pull request, ` +
+        `and may say little. Before starting, read story sc-${parent.id} in Shortcut, including ` +
+        `its comments and tasks, with your Shortcut tools if you have them.`
+    )
   }
   const context: string[] = []
   if (parent?.description.trim()) {
-    context.push(`Story sc-${parent.id}:`, clip(parent.description), '')
+    context.push(`Story sc-${parent.id}:`, clip(parent.description, STORY_MAX, parent.id), '')
   }
   if (subtask.description.trim()) {
-    context.push(`Sub-task sc-${subtask.id}:`, clip(subtask.description), '')
+    context.push(`Sub-task sc-${subtask.id}:`, clip(subtask.description, SUBTASK_MAX, subtask.id), '')
   }
   if (context.length > 0) {
     lines.push(

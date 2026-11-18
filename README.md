@@ -115,6 +115,12 @@ an agent, and the branch it will use. **Start work** then:
    as Orca's new-worktree dialog does,
    with the sub-task and its story as its prompt,
    their descriptions marked as data, not instructions.
+   The prompt says the story describes the work
+   and the sub-task may only track its pull request,
+   and asks the agent to read the story in Shortcut,
+   comments and tasks included, with its Shortcut tools if it has them.
+   Up to 8,000 characters of the story's description are included
+   (3,000 of the sub-task's); a cut one says where the rest is.
 
 A sub-task that already has a worktree opens it instead.
 Each step after the worktree exists reports a failure as a warning

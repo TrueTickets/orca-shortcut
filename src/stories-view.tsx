@@ -16,6 +16,7 @@ import {
   read,
   Row,
   Select,
+  Separator,
   set,
   shell,
   Spinner,
@@ -369,13 +370,17 @@ function Filters({ current, list = false }: { current: StoryList; list?: boolean
               />
             ))}
         </Stack>
-        {/* The list's own: Shortcut's results show whatever matches. */}
+        {/* The list's own (Shortcut's results show whatever matches). A switch past a separator,
+            so it does not read as one more state. */}
         {list ? (
-          <Checkbox
-            label="Show stories without matching sub-tasks"
-            checked={read(showStoriesAlone)}
-            onChange={(checked) => set(showStoriesAlone, checked)}
-          />
+          <>
+            <Separator />
+            <Switch
+              label="Show stories without matching sub-tasks"
+              checked={read(showStoriesAlone)}
+              onChange={(checked) => set(showStoriesAlone, checked)}
+            />
+          </>
         ) : null}
       </Stack>
     </Collapsible>

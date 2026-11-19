@@ -36,7 +36,7 @@ The filter defaults to the `Default states` and `Default owner` settings
 changing it in the panel is remembered.
 A story shows over its sub-tasks that match,
 not on its own when none do;
-turn on **Show stories without matching sub-tasks** (remembered)
+turn on the **Show stories without matching sub-tasks** switch under the filters (remembered)
 to list those too, such as to add a sub-task to one.
 Each story's sub-tasks are indented under it,
 and its chevron folds them away (remembered too);

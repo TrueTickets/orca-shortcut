@@ -33,6 +33,7 @@ import {
   clearSearch,
   collapsed,
   focus,
+  isStoryAlone,
   keyOf,
   list,
   listError,
@@ -46,6 +47,7 @@ import {
   searchShortcut,
   searchWithFilters,
   selected,
+  showStoriesAlone,
   useFiltersInSearch
 } from './state'
 import { shortStateName, toneOfState } from './state-tone'
@@ -340,7 +342,7 @@ function toggleFolded(storyId: number): void {
   )
 }
 
-function Filters({ current }: { current: StoryList }) {
+function Filters({ current, list = false }: { current: StoryList; list?: boolean }) {
   const filter = read(chosenFilter) ?? current.filter
   return (
     <Collapsible title="Filters" description={describeFilter(filter)}>
@@ -367,6 +369,14 @@ function Filters({ current }: { current: StoryList }) {
               />
             ))}
         </Stack>
+        {/* The list's own: Shortcut's results show whatever matches. */}
+        {list ? (
+          <Checkbox
+            label="Show stories without matching sub-tasks"
+            checked={read(showStoriesAlone)}
+            onChange={(checked) => set(showStoriesAlone, checked)}
+          />
+        ) : null}
       </Stack>
     </Collapsible>
   )
@@ -523,11 +533,13 @@ export function StoriesView() {
       </Stack>
     )
   }
-  const groups = narrowGroups(current.groups, text)
+  const alone = read(showStoriesAlone) ? 0 : current.groups.filter(isStoryAlone).length
+  const shown = alone > 0 ? current.groups.filter((group) => !isStoryAlone(group)) : current.groups
+  const groups = narrowGroups(shown, text)
   return (
     <Stack gap="md">
       {header}
-      <Filters current={current} />
+      <Filters current={current} list />
       {problem ? <Callout tone="danger">{problem}</Callout> : null}
       {current.truncated ? (
         <Callout tone="warning">Some states have more stories than the list shows.</Callout>
@@ -538,6 +550,12 @@ export function StoriesView() {
         <EmptyState
           title="No matches here"
           description={`Nothing in this list matches "${text}". Press Enter to search all of Shortcut.`}
+          icon="search"
+        />
+      ) : alone > 0 ? (
+        <EmptyState
+          title="No sub-tasks"
+          description={`${alone} ${alone === 1 ? 'story matches' : 'stories match'} these filters, but none of ${alone === 1 ? 'its' : 'their'} sub-tasks do. Turn on Show stories without matching sub-tasks to see ${alone === 1 ? 'it' : 'them'}.`}
           icon="search"
         />
       ) : (

@@ -38,6 +38,11 @@ export const searching = atom(false)
 /** Whether Enter's search of all of Shortcut keeps to the list's filter; remembered. */
 export const searchWithFilters = atom('searchFilters', false, { persist: 'plugin' })
 export const searchError = atom<string | null>(null)
+/**
+ * Whether the list shows a story that matches the filter when none of its sub-tasks do; off, a
+ * story shows only over its matching sub-tasks. On, it is there to add a sub-task to. Remembered.
+ */
+export const showStoriesAlone = atom('storiesAlone', false, { persist: 'plugin' })
 
 export const worktrees = atom<WorktreeList | null>(null)
 export const worktreesLoading = atom(false)
@@ -136,6 +141,11 @@ export function useFiltersInSearch(on: boolean): void {
 
 export function clearSearch(): void {
   changeQuery('')
+}
+
+/** A story listed with none of its sub-tasks: a sub-task whose story is missing does not count. */
+export function isStoryAlone(group: StoryGroup): boolean {
+  return group.story.parentId === null && group.subtasks.length === 0
 }
 
 /**

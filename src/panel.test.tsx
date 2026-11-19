@@ -4,6 +4,9 @@ import * as panel from './panel'
 import type { AuthStatus, StoryFilter, StoryList, WorktreeList } from './protocol'
 import { storyItem, worktreeRef } from './test-fixtures'
 
+/** Stories listed without their sub-tasks show, as these tests' lists hold some. */
+const storiesAlone = { plugin: { storiesAlone: true } }
+
 const disconnected: AuthStatus = { connected: false, secretsAvailable: true }
 const noKeyStore: AuthStatus = { connected: false, secretsAvailable: false }
 const connected: AuthStatus = {
@@ -149,7 +152,7 @@ function headers(view: View): string[] {
 
 test('lists sub-tasks under a header for their story, as Orca lists worktrees', async () => {
   const host = mockHost({ requests: { 'auth.status': connected, 'stories.list': list } })
-  const view = await mount(panel, { host })
+  const view = await mount(panel, { host, persisted: storiesAlone })
   // The story with sub-tasks is a header, not a row; the lone story is a row of its own.
   assert.ok(view.find({ text: 'Parent story' }))
   assert.deepEqual(
@@ -161,6 +164,33 @@ test('lists sub-tasks under a header for their story, as Orca lists worktrees', 
   )
   assert.deepEqual(view.errors, [])
   assert.deepEqual(view.warnings, [])
+  await view.unmount()
+})
+
+test('a story without matching sub-tasks shows only once the filter asks for it', async () => {
+  const host = mockHost({ requests: { 'auth.status': connected, 'stories.list': list } })
+  const view = await mount(panel, { host })
+  // Off by default: a story shows over the sub-tasks that match, not on its own.
+  assert.equal(view.find({ text: 'Lone story' }), null)
+  assert.ok(view.find({ text: 'Parent story' }))
+  await view.toggle({ label: 'Filters' })
+  await view.toggle({ label: 'Show stories without matching sub-tasks' })
+  assert.ok(view.find({ text: 'Lone story' }))
+  assert.equal(view.persisted.plugin.storiesAlone, true)
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('says when every story listed is one without matching sub-tasks', async () => {
+  const lone: StoryList = { ...list, groups: [list.groups[0]] }
+  const host = mockHost({ requests: { 'auth.status': connected, 'stories.list': lone } })
+  const view = await mount(panel, { host })
+  const empty = view.find({ type: 'EmptyState' })
+  assert.equal(empty?.props.title, 'No sub-tasks')
+  assert.equal(
+    empty?.props.description,
+    '1 story matches these filters, but none of its sub-tasks do. Turn on Show stories without matching sub-tasks to see it.'
+  )
   await view.unmount()
 })
 
@@ -519,7 +549,7 @@ test('says why work could not start, and keeps the form', async () => {
 
 test('a story offers no worktree of its own', async () => {
   const host = mockHost({ requests: { 'auth.status': connected, 'stories.list': list } })
-  const view = await mount(panel, { host })
+  const view = await mount(panel, { host, persisted: storiesAlone })
   await view.press({ type: 'ListItem', text: /Lone story/ })
   assert.equal(view.find({ type: 'Button', text: 'Start work' }), null)
   assert.ok(view.find({ text: "Work starts on a story's sub-tasks." }))
@@ -554,7 +584,7 @@ test('each story is its own card, and the selected row shares an accent tint wit
   const host = mockHost({
     requests: { 'auth.status': connected, 'stories.list': list, 'work.options': workOptions }
   })
-  const view = await mount(panel, { host })
+  const view = await mount(panel, { host, persisted: storiesAlone })
   const boxes = () => nodes(view).filter((node) => node.type === 'Box')
   // One card per story, set apart by its background: the lone story, and the story with its sub-tasks.
   assert.equal(boxes().filter((box) => box.props?.background === 'muted').length, 2)
@@ -626,7 +656,7 @@ test('creates a sub-task from a story, then opens it with Start work ready', asy
       'work.options': (input: unknown) => (sent.push({ name: 'work.options', input }), workOptions)
     }
   })
-  const view = await mount(panel, { host })
+  const view = await mount(panel, { host, persisted: storiesAlone })
   await view.press({ type: 'ListItem', text: /Lone story/ })
   assert.equal(view.find({ type: 'Button', text: 'Create sub-task' })?.props?.disabled, true)
   await view.type({ label: 'New sub-task' }, 'Tabulate the results')
@@ -652,7 +682,7 @@ test('says when the filter does not show the new sub-task', async () => {
       'subtask.create': { id: 31, name: 'Hidden', state: 'New', warnings: [] }
     }
   })
-  const view = await mount(panel, { host })
+  const view = await mount(panel, { host, persisted: storiesAlone })
   await view.press({ type: 'ListItem', text: /Lone story/ })
   await view.type({ label: 'New sub-task' }, 'Hidden', { submit: true })
   assert.ok(view.find({ text: 'Created sc-31 in New. The current filter does not show it.' }))
@@ -669,7 +699,7 @@ test('says why a sub-task could not be created, keeping the title', async () => 
       }
     }
   })
-  const view = await mount(panel, { host })
+  const view = await mount(panel, { host, persisted: storiesAlone })
   await view.press({ type: 'ListItem', text: /Lone story/ })
   await view.type({ label: 'New sub-task' }, 'Too long')
   await view.press({ type: 'Button', text: 'Create sub-task' })
@@ -800,7 +830,7 @@ test('offers no picker without later states, and says why a move failed', async 
       }
     }
   })
-  const view = await mount(panel, { host })
+  const view = await mount(panel, { host, persisted: storiesAlone })
   await view.press({ type: 'ListItem', text: /Lone story/ })
   assert.equal(view.find({ label: 'Move to' }), null)
   await view.press({ type: 'ListItem', text: /First sub-task/ })
@@ -832,7 +862,7 @@ const titles = (view: View) => [...headers(view), ...rows(view).map((row) => row
 
 test('typing narrows the list by title or id, keeping a sub-task under its story', async () => {
   const host = mockHost({ requests: { 'auth.status': connected, 'stories.list': searchable } })
-  const view = await mount(panel, { host })
+  const view = await mount(panel, { host, persisted: storiesAlone })
   await view.type({ label: 'Search stories' }, 'print')
   assert.deepEqual(titles(view), ['Parent story', 'Print the tables'])
   await view.type({ label: 'Search stories' }, 'sc-30', { replace: true })
@@ -864,7 +894,7 @@ test('Enter searches all of Shortcut in place of the list, until cleared', async
       }
     }
   })
-  const view = await mount(panel, { host })
+  const view = await mount(panel, { host, persisted: storiesAlone })
   await view.type({ label: 'Search stories' }, 'engine', { submit: true })
   assert.deepEqual(sent, [{ query: 'engine' }])
   assert.ok(view.find({ text: 'All of Shortcut · 1 match' }))

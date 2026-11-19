@@ -34,6 +34,10 @@ even when the parent itself does not match the filter.
 The filter defaults to the `Default states` and `Default owner` settings
 (`Ready` and `me`);
 changing it in the panel is remembered.
+A story shows over its sub-tasks that match,
+not on its own when none do;
+turn on **Show stories without matching sub-tasks** (remembered)
+to list those too, such as to add a sub-task to one.
 Each story's sub-tasks are indented under it,
 and its chevron folds them away (remembered too);
 a folded story says how many it hides, and whether you are working in one.

@@ -119,8 +119,10 @@ an agent, and the branch it will use. **Start work** then:
    and the sub-task may only track its pull request,
    and asks the agent to read the story in Shortcut,
    comments and tasks included, with its Shortcut tools if it has them.
-   Up to 8,000 characters of the story's description are included
-   (3,000 of the sub-task's); a cut one says where the rest is.
+   Orca takes a prompt of at most 4,096 characters,
+   so the sub-task's description gets up to 1,000
+   and the story's the rest;
+   a cut one says where the rest is.
 
 A sub-task that already has a worktree opens it instead.
 Each step after the worktree exists reports a failure as a warning

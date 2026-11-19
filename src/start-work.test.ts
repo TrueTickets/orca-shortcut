@@ -1,6 +1,6 @@
 import { assert, test } from 'orca/testing'
 import type { ShortcutStory, ShortcutWorkflowState } from './shortcut-api'
-import { buildAgentPrompt, planShortcutUpdates, suggestProject } from './start-work'
+import { buildAgentPrompt, planShortcutUpdates, PROMPT_MAX, suggestProject } from './start-work'
 
 const WORKFLOW = 1
 const STATES: ShortcutWorkflowState[] = [
@@ -117,8 +117,10 @@ test('the agent prompt has no context block without descriptions, and cuts long 
     buildAgentPrompt(story(11), null),
     'Work on Shortcut sub-task sc-11: Story 11\nhttps://app.shortcut.com/engines/story/11'
   )
+  // Without a story, the sub-task's description gets all the room there is.
   const long = buildAgentPrompt(story(11, { description: 'x'.repeat(5000) }), null)
-  assert.match(long, /x{3000}\n\[…cut: the rest is in sc-11 in Shortcut\]/)
+  assert.match(long, /x{3500,}\n\[…cut: the rest is in sc-11 in Shortcut\]\n\n--- END/)
+  assert.ok(long.length <= PROMPT_MAX)
 })
 
 test('the story carries the spec: the agent is told to read it, and more of it fits', () => {
@@ -132,11 +134,27 @@ test('the story carries the spec: the agent is told to read it, and more of it f
   )
   // The pointer sits before the context block, as an instruction from the plugin, not data.
   assert.ok(prompt.indexOf('Before starting') < prompt.indexOf('--- BEGIN SHORTCUT CONTEXT ---'))
-  assert.match(prompt, /y{8000}\n\[…cut: the rest is in sc-10 in Shortcut\]/)
-  assert.ok(!/y{8001}/.test(prompt))
-  // A story under the limit is passed whole, and a sub-task without a story gets no pointer.
-  assert.match(buildAgentPrompt(story(11), story(10, { description: 'z'.repeat(7000) })), /z{7000}\n\n--- END/)
+  assert.match(prompt, /y{2500,}\n\[…cut: the rest is in sc-10 in Shortcut\]/)
+  assert.match(prompt, /Sub-task sc-11:\nPR goes here\./)
+  // A story that fits is passed whole, and a sub-task without a story gets no pointer.
+  assert.match(buildAgentPrompt(story(11), story(10, { description: 'z'.repeat(2000) })), /z{2000}\n\n--- END/)
   assert.ok(!/Before starting/.test(buildAgentPrompt(story(11), null)))
+})
+
+test('the whole agent prompt fits Orca\'s limit, however long the descriptions', () => {
+  // Orca refuses a prompt over 4096 characters, so starting work would fail.
+  assert.equal(PROMPT_MAX, 4096)
+  const prompt = buildAgentPrompt(
+    story(11, { name: 'n'.repeat(300), description: 's'.repeat(6000) }),
+    story(10, { name: 'm'.repeat(300), description: 'y'.repeat(20000) })
+  )
+  assert.ok(prompt.length <= PROMPT_MAX, `${prompt.length} characters`)
+  assert.ok(prompt.length > PROMPT_MAX - 10, 'the room is used, not wasted')
+  // The sub-task keeps its share, cut, and the story fills the rest.
+  assert.match(prompt, /s{900,1000}\n\[…cut: the rest is in sc-11 in Shortcut\]/)
+  assert.ok(!/s{1001}/.test(prompt))
+  assert.match(prompt, /y{1000,}\n\[…cut: the rest is in sc-10 in Shortcut\]/)
+  assert.ok(prompt.endsWith('--- END SHORTCUT CONTEXT ---'))
 })
 
 test('suggests where sibling sub-tasks have worktrees, then the last project, then the first', () => {

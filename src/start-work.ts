@@ -83,25 +83,28 @@ export function planShortcutUpdates(args: {
   return { updates, notes }
 }
 
-/** Longest a description may be in the agent prompt, so a long story cannot crowd out the task. */
-/** The story carries the spec, so more of it fits; a sub-task's description is usually short. */
-const STORY_MAX = 8000
-const SUBTASK_MAX = 3000
+/** Orca refuses a longer agent prompt ("prompt: Too big"), so the whole prompt is kept under it. */
+export const PROMPT_MAX = 4096
+/** A sub-task's share when there is a story: usually short, and the story carries the spec. */
+const SUBTASK_MAX = 1000
 
-/** A description up to `max` characters; a cut one says where the rest is. */
+/** A description in at most `max` characters, the cut note included; a cut one says where the rest is. */
 function clip(text: string, max: number, storyId: number): string {
   const trimmed = text.trim()
-  return trimmed.length > max
-    ? `${trimmed.slice(0, max)}\n[…cut: the rest is in sc-${storyId} in Shortcut]`
-    : trimmed
+  if (trimmed.length <= max) {
+    return trimmed
+  }
+  const note = `\n[…cut: the rest is in sc-${storyId} in Shortcut]`
+  return `${trimmed.slice(0, Math.max(0, max - note.length))}${note}`
 }
 
-/**
- * The agent's first prompt: the sub-task and its story, then their descriptions marked as data.
- * Story text is written by anyone in the workspace, so it is fenced as untrusted, as Orca fences
- * linked issues; the agent can read more through its own Shortcut tools.
- */
-export function buildAgentPrompt(subtask: ShortcutStory, parent: ShortcutStory | null): string {
+/** The prompt around descriptions already cut to fit; an empty one leaves its section out. */
+function renderPrompt(
+  subtask: ShortcutStory,
+  parent: ShortcutStory | null,
+  storyText: string,
+  subtaskText: string
+): string {
   const lines = [`Work on Shortcut sub-task sc-${subtask.id}: ${subtask.name}`, subtask.appUrl]
   if (parent) {
     lines.push(
@@ -116,11 +119,11 @@ export function buildAgentPrompt(subtask: ShortcutStory, parent: ShortcutStory |
     )
   }
   const context: string[] = []
-  if (parent?.description.trim()) {
-    context.push(`Story sc-${parent.id}:`, clip(parent.description, STORY_MAX, parent.id), '')
+  if (parent && storyText) {
+    context.push(`Story sc-${parent.id}:`, storyText, '')
   }
-  if (subtask.description.trim()) {
-    context.push(`Sub-task sc-${subtask.id}:`, clip(subtask.description, SUBTASK_MAX, subtask.id), '')
+  if (subtaskText) {
+    context.push(`Sub-task sc-${subtask.id}:`, subtaskText, '')
   }
   if (context.length > 0) {
     lines.push(
@@ -132,6 +135,27 @@ export function buildAgentPrompt(subtask: ShortcutStory, parent: ShortcutStory |
     )
   }
   return lines.join('\n')
+}
+
+/**
+ * The agent's first prompt: the sub-task and its story, then their descriptions marked as data.
+ * Story text is written by anyone in the workspace, so it is fenced as untrusted, as Orca fences
+ * linked issues; the agent can read more through its own Shortcut tools. The whole prompt fits in
+ * PROMPT_MAX: the sub-task's description gets up to SUBTASK_MAX, the story's the rest.
+ */
+export function buildAgentPrompt(subtask: ShortcutStory, parent: ShortcutStory | null): string {
+  const story = parent?.description.trim() ?? ''
+  const own = subtask.description.trim()
+  // Room left for a description once everything else, its section heading included, is in.
+  const room = (storyText: string, subtaskText: string) =>
+    PROMPT_MAX - renderPrompt(subtask, parent, storyText, subtaskText).length + 1
+  // With a story, the sub-task keeps a share; alone, it gets all the room.
+  const subtaskRoom = story ? Math.min(SUBTASK_MAX, room('x', 'x')) : room('', 'x')
+  const subtaskText = own ? clip(own, subtaskRoom, subtask.id) : ''
+  const storyText = story && parent ? clip(story, room('x', subtaskText), parent.id) : ''
+  const prompt = renderPrompt(subtask, parent, storyText, subtaskText)
+  // Only names hundreds of characters long could still overflow; Orca would refuse the prompt.
+  return prompt.length > PROMPT_MAX ? prompt.slice(0, PROMPT_MAX) : prompt
 }
 
 /**
